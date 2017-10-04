@@ -13,6 +13,8 @@
 
 #include <linux/printk.h>
 #include <linux/err.h>
+#include <linux/slab.h>
+
 #include <net/tcp_challenge.h>
 
 
@@ -41,4 +43,78 @@ struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u16 mlen,
     }
 
   return chlg;
+}
+
+/* tcpch_alloc_solution */
+struct tcpch_solution *tcpch_alloc_solution (u32 mts, u16 mnz)
+{
+  struct tcpch_solution *solution;
+
+  solution = (struct tcpch_solution *)
+                    kmalloc (sizeof (struct tcpch_solution), GFP_KERNEL);
+
+  if (IS_ERR(solution))
+    {
+      printk ("Cannot allocate memory for TCP/IP solution\n");
+    }
+  else 
+    {
+      solution->ts = mts;
+      solution->nz = mnz;
+      INIT_LIST_HEAD (&(solution->list));
+
+      /* set the data buf to 0 */
+      solution->sbuf = 0;
+    }
+
+  return solution;
+}
+
+/* tcpch_free_challenge */
+void tcpch_free_challenge (struct tcpch_challenge *chlg)
+{
+  if (chlg == 0)
+    {
+      return;
+    }
+
+  if (chlg->cbuf)
+    {
+      kfree (chlg->cbuf);
+    }
+
+  /* done free the challenge */
+  kfree (chlg);
+}
+
+/* free solution helper */
+void _tcpch_free_solution (struct tcpch_solution *sol)
+{
+  if (sol == 0)
+    {
+      return;
+    }
+
+  if (sol->sbuf)
+    {
+      kfree (sol->sbuf);
+    }
+
+  /* done, free the solution */
+  kfree (sol);
+}
+
+/* tcpch_free_solution */
+void tcpch_free_solution (struct tcpch_solution *sol)
+{
+  struct tcpch_solution *itr, *tmp;
+
+  list_for_each_entry_safe (itr, tmp, &(sol->list), list)
+    {
+      /* remove the iterator from the list */
+      list_del (&(itr->list));
+
+      /* free the subsolution */
+      _tcpch_free_solution (itr);
+    }
 }

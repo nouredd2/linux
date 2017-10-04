@@ -1,5 +1,5 @@
 /*
- * INET		An implementation of the TCP/IP client puzzles as presented 
+ * INET		An implementation of the TCP/IP client puzzles as presented
  *    in the paper by Ari Juels in 1999
  *
  *		Definitions for the TCP/IP client challenges
@@ -43,7 +43,7 @@ struct tcpch_challenge {
 struct tcpch_solution {
     u32             ts;         /* the timestamp used for the subpuzzle */
     u16             nz;         /* the number of subpuzzles             */
-    u8              *sol;       /* the current solution                 */
+    u8              *sbuf;       /* the current solution                 */
 
     struct list_head  list;     /* the list of sub-solutions contained  */
 };
@@ -91,7 +91,7 @@ void tcpch_free_challenge (struct tcpch_challenge *chlg);
  * the solutions in the list. It will free up every node in the list
  * starting from the one passed as an argument.
  */
-void tcpch_free_solution (struct tcpcph_solution *sol);
+void tcpch_free_solution (struct tcpch_solution *sol);
 
 
 #endif /* TCP_CHALLENGE_H */

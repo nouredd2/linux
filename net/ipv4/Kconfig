@@ -297,6 +297,19 @@ config SYN_COOKIES
 
 	  If unsure, say N.
 
+config SYN_CHALLENGE
+  bool "IP: TCP client puzzles support"
+  ---help---
+    Enable support for client puzzles as a defense against SYN flooding. 
+    By default the algorithms used are those presented in the Juels1999 paper
+    using the SHA256 digest function. Default number of subchallenge is 
+    and the default challenge difficutly is .
+
+    If you say Y here, you enable support for client puzzles in the 
+    kernel's TCP/IP stack. 
+
+    If unsure, say N.
+
 config NET_IPVTI
 	tristate "Virtual (secure) IP: tunneling"
 	select INET_TUNNEL
