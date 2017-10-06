@@ -12,12 +12,13 @@
  */
 
 #include <linux/err.h>
+#include <linux/time.h>
 #include <linux/slab.h>
 #include <linux/export.h>
 #include <linux/printk.h>
-#include <linux/time.h>
 
 #include <crypto/hash.h>
+#include <crypto/drbg.h>
 
 #include <net/tcp.h>
 #include <linux/tcp.h>
@@ -31,7 +32,7 @@ static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
 
 
 /* tcpch_alloc_challenge */
-struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u16 mlen,
+struct tcpch_challenge *tcpch_alloc_challenge (u64 mts, u16 mlen,
     u16 mnz, u16 mndiff)
 {
   struct tcpch_challenge *chlg;
@@ -58,7 +59,7 @@ struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u16 mlen,
 }
 
 /* tcpch_alloc_solution */
-struct tcpch_solution *tcpch_alloc_solution (u32 mts, u16 mnz)
+struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz)
 {
   struct tcpch_solution *solution;
 
@@ -72,6 +73,7 @@ struct tcpch_solution *tcpch_alloc_solution (u32 mts, u16 mnz)
   else 
     {
       solution->ts = mts;
+      solution->diff = diff;
       solution->nz = mnz;
       INIT_LIST_HEAD (&(solution->list));
 
@@ -131,6 +133,7 @@ void tcpch_free_solution (struct tcpch_solution *sol)
     }
 }
 
+/* __init_sdesc_from_alg */
 struct shash_desc *__init_sdesc_from_alg (struct crypto_shash *alg)
 {
   struct shash_desc *sdesc = (struct shash_desc *)
@@ -140,6 +143,211 @@ struct shash_desc *__init_sdesc_from_alg (struct crypto_shash *alg)
 
   return sdesc;
 }
+
+static int __tcpch_get_random_bytes (u8 *buf, int len)
+{
+  struct crypto_rng *rng;
+  char *drbg = "drbg_nopr_sha256";
+  int ret;
+
+  if (!buf || !len)
+    {
+      pr_debug ("No output buffer provided!\n");
+      return -EINVAL;
+    }
+
+  rng = crypto_alloc_rng (drbg, 0, 0);
+  if (IS_ERR(rng))
+    {
+      pr_debug ("could not allocate RNG handle for %s\n", drbg);
+      return -PTR_ERR(rng);
+    }
+
+  ret = crypto_rng_get_bytes (rng, buf, len);
+  if (ret < 0)
+    {
+      pr_debug ("tcpch: generation of random bytes failed\n");
+    }
+  else if (ret == 0)
+    {
+      pr_debug ("tcpch: RNG returned no data\n");
+    }
+
+  crypto_free_rng (rng);
+  return ret;
+} /* __tcpch_get_random_bytes */
+
+/* @return 0 if match, +/-1 otherwise */
+static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
+{
+  int cmp, rem, idx;
+  u8 cx, cy;
+
+  if (!xbuf || !ybuf)
+      return -1;
+
+  if (len == 0)
+      return 0;
+
+  cmp = memcmp (xbuf, ybuf, len/8);
+
+  rem = len%8;
+  if (rem > 0)
+    {
+      idx = len/8;
+      cx = xbuf[idx];
+      cy = ybuf[idx];
+
+      cx = cx >> (8-rem);
+      cy = cy >> (8-rem);
+
+      if (cx != cy)
+          return -1;
+    }
+
+  return cmp;
+} /* __tcpch_compare_bits */
+
+struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
+    const struct tcphdr *th, struct timeval *stamp,
+    struct tcpch_challenge *chlg)
+{
+  struct crypto_shash     *alg;
+  struct shash_desc       *sdesc;
+  struct tcpch_solution   *sol, *head;
+
+  int err;
+  int dsize;
+  int found;
+  u16 xlen;
+  u8 *xbuf;
+  u8 *zbuf;
+  u8 *trial;
+  u16 i;
+
+  long ts;
+
+  __be32 saddr, daddr;
+  __be16 sport, dport;
+
+  /* get source and destination addresses */
+  saddr = iph->saddr;
+  daddr = iph->daddr;
+
+  /* get source and destination port numbers */
+  sport = th->source;
+  dport = th->dest;
+
+  /* get the timestamp in microsec */
+  ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
+
+  /* create the hash algorithm */
+  alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST, 
+      CRYPTO_ALG_TYPE_HASH_MASK);
+
+  if (IS_ERR(alg)) 
+    {
+      printk ("Failed to create hash algo!\n");
+      return ERR_PTR (-ENOMEM); /* double check error code */
+    }
+
+  sdesc = __init_sdesc_from_alg (alg);
+
+  if (IS_ERR(sdesc)) 
+    {
+      head = ERR_PTR(-ENOMEM);
+      goto out;
+    }
+
+  /* grab x from the challenge */
+  xbuf = chlg->cbuf;
+
+  /* create z buffer to hold trials */
+  xlen = chlg->len / 16;
+  zbuf = (u8 *) kmalloc (xlen, GFP_KERNEL);
+  if (IS_ERR(zbuf))
+    {
+      head = ERR_PTR (-ENOMEM);
+      goto out;
+    }
+
+  /* allocate some space for the hash */
+  dsize = crypto_shash_digestsize (alg);
+  trial = (u8 *) kmalloc (dsize, GFP_KERNEL);
+  if (IS_ERR(trial))
+    {
+      head = ERR_PTR(-ENOMEM);
+      goto out;
+    }
+
+  sol = head = 0;
+  for (i=0; i < chlg->nz; ++i)
+    {
+      found = 0;
+      do {
+          err = crypto_shash_init (sdesc);
+          if (err < 0)
+            {
+              pr_debug ("tcpch: Failed toe init hash function!\n");
+              head = ERR_PTR(err);
+              goto out;
+            }
+          err = crypto_shash_update (sdesc, xbuf, xlen);
+          err = crypto_shash_update (sdesc, (u8 *)&i, sizeof (u16));
+
+          err = __tcpch_get_random_bytes (zbuf, xlen);
+          if (err <= 0)
+            {
+              pr_debug ("tcpch: Failed to generate random bytes!\n");
+              head = ERR_PTR(err);
+              goto out;
+            }
+          err = crypto_shash_update (sdesc, zbuf, xlen);
+
+          /* so now we have built x || i || zi, so hash it and compare */
+          err = crypto_shash_final (sdesc, trial);
+
+          /* check the bits */
+          found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
+      } while (found == 0);
+      
+      /* allocate a solution struct and add it the list */
+      sol = tcpch_alloc_solution (ts, chlg->ndiff, chlg->nz);
+      sol->sbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
+      memcpy (sol->sbuf, zbuf, xlen);
+
+      if (head == 0) 
+        {
+          head = sol;
+        }
+      else
+        {
+          list_add_tail (&(head->list), &(sol->list));
+        }
+    }
+
+  kfree (trial);
+  kfree (zbuf);
+out:
+  crypto_free_shash (alg);
+  kfree (sdesc);
+
+  return head;
+} /* __solve_challenge */
+
+/* tcpch_solve_challenge */
+struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
+    struct tcpch_challenge *chlg)
+{
+  const struct iphdr *iph = ip_hdr (skb);
+  const struct tcphdr *th = tcp_hdr (skb);
+  struct timeval stamp;
+
+  skb_get_timestamp (skb, &stamp);
+
+  return __solve_challenge (iph, th, &stamp, chlg);
+}
+EXPORT_SYMBOL_GPL (tcpch_solve_challenge);
 
 /* internal challenge generation */
 struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
@@ -163,7 +371,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   /* get source and destination port numbers */
   __be16 sport = th->source;
   __be16 dport = th->dest;
- 
+
   /* also keep the initial sequence number */
   __u32 sseq = ntohl (th->seq);
 
@@ -175,7 +383,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   /* create the hash algorithm */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST, 
-                                CRYPTO_ALG_TYPE_HASH_MASK);
+      CRYPTO_ALG_TYPE_HASH_MASK);
 
   if (IS_ERR(alg)) 
     {
@@ -193,7 +401,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   /* add the key to the state */
   err = crypto_shash_update (sdesc, tcp_challenge_secret,
-                              TCPCH_KEY_SIZE);
+      TCPCH_KEY_SIZE);
 
   /* create key || iss || saddr || sport || daddr || dport || ts */
   err = crypto_shash_update (sdesc, (u8 *) &sseq, sizeof(u32));
@@ -207,7 +415,8 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   digest = (u8 *) kmalloc (digestsize, GFP_KERNEL);
   if (IS_ERR(digest))
     {
-      return ERR_PTR(-ENOMEM);
+      chlg = ERR_PTR(-ENOMEM);
+      goto out;
     }
 
   /* compute the hash of the data that we updated */
@@ -221,19 +430,29 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   if (IS_ERR(xbuf))
     {
-      return ERR_PTR (-ENOMEM);
+      chlg = ERR_PTR (-ENOMEM);
+      goto out;
     }
 
   /* grab the bytes */
   memcpy (xbuf, digest, xlen);
 
   /* Done just set up the struct  */
+  chlg = tcpch_alloc_challenge (ts, len, nz, diff);
+  if (! IS_ERR(chlg))
+    {
+      chlg->cbuf = xbuf;
+    }
+
+out:
+  crypto_free_shash (alg);
+  kfree (sdesc);
 
   return chlg;
-}
+} /*  __generate_challenge */
 
 /* challenge generation from a specific packet */
-struct tcpch_challenge *generate_challenge (struct sk_buff *skb,
+struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
     u16 len, u16 nz, u16 diff)
 {
   const struct iphdr *iph = ip_hdr (skb);
@@ -243,5 +462,6 @@ struct tcpch_challenge *generate_challenge (struct sk_buff *skb,
   skb_get_timestamp (skb, &stamp);
 
   return __generate_challenge (iph, th, &stamp, len, nz, diff);
-}
+} /* tcpch_generate_challenge */
+EXPORT_SYMBOL_GPL (tcpch_generate_challenge);
 

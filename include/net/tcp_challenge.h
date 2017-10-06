@@ -30,7 +30,7 @@
 struct tcpch_challenge {
     u8            *cbuf;      /* the actual challenge to send to the client */
 
-    u32           ts;         /* the timestamp of the current challenge     */
+    u64           ts;         /* the timestamp of the current challenge     */
     u16           len;        /* the length of (x+z) in the puzzle          */
     u16           nz;         /* the number of subpuzzles                   */
     u16           ndiff;      /* the number of bits of difficulty           */
@@ -41,9 +41,10 @@ struct tcpch_challenge {
  * challenge
  */
 struct tcpch_solution {
-    u32             ts;         /* the timestamp used for the subpuzzle */
+    u64             ts;         /* the timestamp used for the subpuzzle */
     u16             nz;         /* the number of subpuzzles             */
-    u8              *sbuf;       /* the current solution                 */
+    u16             diff;       /* the number of diffuclty bits         */
+    u8              *sbuf;      /* the current solution                 */
 
     struct list_head  list;     /* the list of sub-solutions contained  */
 };
@@ -59,12 +60,13 @@ struct tcpch_solution {
  * and WILL NOT allocate memory of the buffer to hold the challenge, this
  * should be done separately.
  */
-struct tcpch_challenge *tcpch_alloc_challenge(u32 mts, u16 mlen,
+struct tcpch_challenge *tcpch_alloc_challenge(u64 mts, u16 mlen,
     u16 mnz, u16 mndiff);
 
 /**
  * tcpch_alloc_solution - allocate memory for a challenge solution
  * @mts: The timestamp that was used for the solution
+ * @diff: The number of bits of difficulty
  * @mnz: The number of subchallenges to be solved, this is only useful at
  *    the head of the list
  *
@@ -72,7 +74,7 @@ struct tcpch_challenge *tcpch_alloc_challenge(u32 mts, u16 mlen,
  * data to 0 and WILL NOT allocate memory to hold the solution. This contains
  * a list head to point to the next sub challenge solution.
  */
-struct tcpch_solution *tcpch_alloc_solution (u32 mts, u16 mnz);
+struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz);
 
 /**
  * tcpch_free_challenge() - Free the space occupied by a challenge
@@ -92,6 +94,19 @@ void tcpch_free_challenge (struct tcpch_challenge *chlg);
  * starting from the one passed as an argument.
  */
 void tcpch_free_solution (struct tcpch_solution *sol);
+
+/*
+ * tcpch_generate_challenge () - Generate challenge from a give packet
+ *                  and some configuration parameters
+ *
+ * @skb:  incoming packet
+ * @len:  the length of the challenge in bits
+ * @nz:   the number of sub puzzles
+ * @diff: the puzzle difficulty in bits
+ *
+ */
+struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
+                            u16 len, u16 nz, u16 diff);
 
 
 #endif /* TCP_CHALLENGE_H */
