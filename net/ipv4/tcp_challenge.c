@@ -11,11 +11,23 @@
  *
  */
 
-#include <linux/printk.h>
 #include <linux/err.h>
 #include <linux/slab.h>
+#include <linux/export.h>
+#include <linux/printk.h>
+#include <linux/time.h>
+
+#include <crypto/hash.h>
+
+#include <net/tcp.h>
+#include <linux/tcp.h>
 
 #include <net/tcp_challenge.h>
+
+/* keep a key for the tcp challenge. This is similar to the syncookies
+ * approach, but I think in the future we want to move this out of here
+ */
+static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
 
 
 /* tcpch_alloc_challenge */
@@ -118,3 +130,118 @@ void tcpch_free_solution (struct tcpch_solution *sol)
       _tcpch_free_solution (itr);
     }
 }
+
+struct shash_desc *__init_sdesc_from_alg (struct crypto_shash *alg)
+{
+  struct shash_desc *sdesc = (struct shash_desc *)
+                                kmalloc (sizeof (struct shash_desc), GFP_KERNEL);
+  sdesc->tfm = alg;
+  sdesc->flags = 0x0;
+
+  return sdesc;
+}
+
+/* internal challenge generation */
+struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
+    const struct tcphdr *th, struct timeval *stamp, 
+    u16 len, u16 nz, u16 diff)
+{
+  struct crypto_shash     *alg;
+  struct shash_desc       *sdesc;
+  struct tcpch_challenge  *chlg;
+
+  int  err;
+  int  digestsize;
+  u16  xlen;
+  u8   *digest;
+  u8   *xbuf;
+
+  /* get source and destination addresses */
+  __be32 saddr = iph->saddr;
+  __be32 daddr = iph->daddr;
+
+  /* get source and destination port numbers */
+  __be16 sport = th->source;
+  __be16 dport = th->dest;
+ 
+  /* also keep the initial sequence number */
+  __u32 sseq = ntohl (th->seq);
+
+  /* get the timestamp in microsec */
+  long ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
+
+  /* make sure the key is generated */
+  net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
+
+  /* create the hash algorithm */
+  alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST, 
+                                CRYPTO_ALG_TYPE_HASH_MASK);
+
+  if (IS_ERR(alg)) 
+    {
+      printk ("Failed to create hash algo!\n");
+      return ERR_PTR (-ENOMEM); /* double check error code */
+    }
+
+  sdesc = __init_sdesc_from_alg (alg);
+
+  if (IS_ERR(sdesc)) 
+      return ERR_PTR(-ENOMEM);
+
+  /* initialize hash state */
+  err = crypto_shash_init (sdesc);
+
+  /* add the key to the state */
+  err = crypto_shash_update (sdesc, tcp_challenge_secret,
+                              TCPCH_KEY_SIZE);
+
+  /* create key || iss || saddr || sport || daddr || dport || ts */
+  err = crypto_shash_update (sdesc, (u8 *) &sseq, sizeof(u32));
+  err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
+  err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
+  err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
+  err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
+  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (long));
+
+  digestsize = crypto_shash_digestsize (alg);
+  digest = (u8 *) kmalloc (digestsize, GFP_KERNEL);
+  if (IS_ERR(digest))
+    {
+      return ERR_PTR(-ENOMEM);
+    }
+
+  /* compute the hash of the data that we updated */
+  err = crypto_shash_final (sdesc, digest);
+
+  /* grab the lower l/2 bytes of the hash 
+   * len is in bits to divide by 16
+   */
+  xlen = len / 16;
+  xbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
+
+  if (IS_ERR(xbuf))
+    {
+      return ERR_PTR (-ENOMEM);
+    }
+
+  /* grab the bytes */
+  memcpy (xbuf, digest, xlen);
+
+  /* Done just set up the struct  */
+
+  return chlg;
+}
+
+/* challenge generation from a specific packet */
+struct tcpch_challenge *generate_challenge (struct sk_buff *skb,
+    u16 len, u16 nz, u16 diff)
+{
+  const struct iphdr *iph = ip_hdr (skb);
+  const struct tcphdr *th = tcp_hdr (skb);
+  struct timeval stamp;
+  
+  skb_get_timestamp (skb, &stamp);
+
+  return __generate_challenge (iph, th, &stamp, len, nz, diff);
+}
+
