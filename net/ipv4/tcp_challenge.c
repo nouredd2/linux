@@ -30,6 +30,14 @@
  */
 static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
 
+/* keep the puzzle difficulty parameters static to be used by every socket,
+ * these should only be changed by a request from the user. Otherwise they
+ * retain their initial values. 
+ */
+static u16 tcp_challenge_len   = TCPCH_DEFAULT_LEN;
+static u16 tcp_challenge_nz    = TCPCH_DEFAULT_NZ;
+static u16 tcp_challenge_ndiff = TCPCH_DEFAULT_NDIFF;
+
 
 /* tcpch_alloc_challenge */
 struct tcpch_challenge *tcpch_alloc_challenge (u64 mts, u16 mlen,
@@ -242,10 +250,10 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
   ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
 
   /* create the hash algorithm */
-  alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST, 
+  alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
       CRYPTO_ALG_TYPE_HASH_MASK);
 
-  if (IS_ERR(alg)) 
+  if (IS_ERR(alg))
     {
       printk ("Failed to create hash algo!\n");
       return ERR_PTR (-ENOMEM); /* double check error code */
@@ -253,7 +261,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
 
   sdesc = __init_sdesc_from_alg (alg);
 
-  if (IS_ERR(sdesc)) 
+  if (IS_ERR(sdesc))
     {
       head = ERR_PTR(-ENOMEM);
       goto out;
@@ -310,13 +318,13 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
           /* check the bits */
           found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
       } while (found == 0);
-      
+
       /* allocate a solution struct and add it the list */
       sol = tcpch_alloc_solution (ts, chlg->ndiff, chlg->nz);
       sol->sbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
       memcpy (sol->sbuf, zbuf, xlen);
 
-      if (head == 0) 
+      if (head == 0)
         {
           head = sol;
         }
@@ -351,7 +359,7 @@ EXPORT_SYMBOL_GPL (tcpch_solve_challenge);
 
 /* internal challenge generation */
 struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
-    const struct tcphdr *th, struct timeval *stamp, 
+    const struct tcphdr *th, struct timeval *stamp,
     u16 len, u16 nz, u16 diff)
 {
   struct crypto_shash     *alg;
@@ -382,7 +390,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
 
   /* create the hash algorithm */
-  alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST, 
+  alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
       CRYPTO_ALG_TYPE_HASH_MASK);
 
   if (IS_ERR(alg)) 
@@ -422,7 +430,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   /* compute the hash of the data that we updated */
   err = crypto_shash_final (sdesc, digest);
 
-  /* grab the lower l/2 bytes of the hash 
+  /* grab the lower l/2 bytes of the hash
    * len is in bits to divide by 16
    */
   xlen = len / 16;
@@ -465,3 +473,152 @@ struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
 } /* tcpch_generate_challenge */
 EXPORT_SYMBOL_GPL (tcpch_generate_challenge);
 
+int __verify_solution (const struct iphdr *iph,
+    const struct tcphdr *th, struct timeval *stamp,
+    struct tcpch_solution *sol)
+{
+  struct crypto_shash   *alg;
+  struct shash_desc     *sdesc;
+  struct tcpch_solution *itr, *tmp;
+
+  int ret, err;
+  u16 i;
+  u16 xlen;
+  int dsize;
+  long ts;
+
+  __be32 saddr, daddr;
+  __be16 sport, dport;
+  __u32 sseq;
+
+  u8 *xbuf;
+  u8 *digest;
+
+  if (!sol || !iph || !th)
+    {
+      pr_debug ("[tcp_ch:] Invalid input to verify_solution\n");
+      return -EINVAL;
+    }
+
+  /* always make sure key is generated */
+  net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
+
+  ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
+
+  /* need to build x first */
+  alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
+                              CRYPTO_ALG_TYPE_HASH_MASK);
+
+  if (IS_ERR(alg))
+    {
+      pr_debug ("[tcp_ch:] Failed to create sha256 algorithm\n");
+      return -PTR_ERR(alg);
+    }
+
+  sdesc = __init_sdesc_from_alg (alg);
+  if (IS_ERR(sdesc))
+    {
+      pr_debug ("tcp_ch:] Failed to create shash descriptor\n");
+      crypto_free_shash (alg);
+      return -PTR_ERR(sdesc);
+    }
+
+  /* initialize hash state */
+  err = crypto_shash_init (sdesc);
+  /* save the secret into the state */
+  err = crypto_shash_update (sdesc, tcp_challenge_secret,
+                              TCPCH_KEY_SIZE);
+
+  /* create key || iss || saddr || sport || daddr || dport || ts */
+  err = crypto_shash_update (sdesc, (u8 *) &sseq, sizeof (u32));
+  err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
+  err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
+  err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
+  err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
+  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (long));
+
+  dsize = crypto_shash_digestsize (alg);
+  digest = (u8 *) kmalloc (dsize, GFP_KERNEL);
+  if (IS_ERR(digest))
+    {
+      pr_debug ("[tcp_ch:] Failed to allocate space\n");
+      ret = -ENOMEM;
+      goto out;
+    }
+  crypto_shash_final (sdesc, digest);
+
+  xlen = tcp_challenge_len / 16;
+  xbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
+  if (IS_ERR(xbuf))
+    {
+      pr_debug ("[tcp_ch:] Failed to allocate memory\n");
+      ret = -ENOMEM;
+      goto out_free_digest;
+    }
+  memcpy (xbuf, digest, xlen);
+
+  /* now we have xbuf, the real work starts here! */
+  i = 1;
+  list_for_each_entry_safe (itr, tmp, &(sol->list), list)
+    {
+      err = crypto_shash_init (sdesc);
+      if (err < 0)
+        {
+          pr_debug ("[tcp_ch:] Failed to initialize sha256\n");
+          goto out_free_all; 
+        }
+
+      /* build x || i || z */
+      err = crypto_shash_update (sdesc, xbuf, xlen);
+      err = crypto_shash_update (sdesc, (u8 *) &i, sizeof (u16));
+      err = crypto_shash_update (sdesc, itr->sbuf, xlen);
+
+      err = crypto_shash_final (sdesc, digest);
+
+      /* compate the bits of the computed hash with x */
+      ret = __tcpch_compare_bits (digest, xbuf, tcp_challenge_ndiff);
+      if (ret != 0)
+        {
+          /* one of the sub puzzles failed */
+          ret = 0;
+          goto out_free_all;
+        }
+
+      /* increment count to make sure client submitted all subpuzzles */
+      i++;
+    }
+
+  if (i != tcp_challenge_nz)
+      ret = 0;
+
+  /* sanity check: remove after testing */
+  if (ret != 0)
+    {
+      pr_debug ("[tcp_ch:] Something weird happened here\n");
+      goto out_free_all;
+    }
+  ret = tcp_challenge_nz;
+
+out_free_all:
+  kfree(xbuf);
+out_free_digest:
+  kfree (digest);
+out:
+  kfree (sdesc);
+  crypto_free_shash (alg);
+
+  return ret;
+} /* __verify_solution */
+
+int tcpch_verify_solution (struct sk_buff *skb,
+    struct tcpch_solution *sol)
+{
+  const struct iphdr *iph = ip_hdr (skb);
+  const struct tcphdr *th = tcp_hdr (skb);
+  struct timeval stamp;
+
+  skb_get_timestamp (skb, &stamp);
+
+  return __verify_solution (iph, th, &stamp, sol);
+}
+EXPORT_SYMBOL_GPL (tcpch_verify_solution);
