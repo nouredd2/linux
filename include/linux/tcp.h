@@ -25,6 +25,10 @@
 #include <net/inet_timewait_sock.h>
 #include <uapi/linux/tcp.h>
 
+#ifdef CONFIG_SYN_CHALLENGE
+#include <net/tcp_challenge.h>
+#endif
+
 static inline struct tcphdr *tcp_hdr(const struct sk_buff *skb)
 {
 	return (struct tcphdr *)skb_transport_header(skb);
@@ -88,6 +92,14 @@ struct tcp_sack_block {
 #define TCP_FACK_ENABLED  (1 << 1)   /*1 = FACK is enabled locally*/
 #define TCP_DSACK_SEEN    (1 << 2)   /*1 = DSACK was received from peer*/
 
+#ifdef CONFIG_SYN_CHALLENGE
+enum syn_challenge_type {
+    SYN_NONE=0,
+    SYN_CHALLENGE=1,
+    SYN_SOLUTION=2
+};
+#endif
+
 struct tcp_options_received {
 /*	PAWS/RTTM data	*/
 	long	ts_recent_stamp;/* Time we stored ts_recent (for aging) */
@@ -104,12 +116,32 @@ struct tcp_options_received {
 	u8	num_sacks;	/* Number of SACK blocks		*/
 	u16	user_mss;	/* mss requested by user in ioctl	*/
 	u16	mss_clamp;	/* Maximal mss, negotiated at connection setup */
+
+#ifdef CONFIG_SYN_CHALLENGE
+  u8 ctype;
+  union {
+      /* cannot have both a challenge and a solution */
+      struct tcpch_challenge *chlg; /* a tcp challenge if available */
+      struct tcpch_solution  *sol;  /* a tcp solution if available */
+  };
+#endif
 };
 
 static inline void tcp_clear_options(struct tcp_options_received *rx_opt)
 {
 	rx_opt->tstamp_ok = rx_opt->sack_ok = 0;
 	rx_opt->wscale_ok = rx_opt->snd_wscale = 0;
+
+#ifdef CONFIG_SYN_CHALLENGE
+  if (rx_opt->ctype == SYN_CHALLENGE && rx_opt->chlg)
+    {
+      tcpch_free_challenge (rx_opt->chlg);
+    }
+  else if (rx_opt->ctype == SYN_SOLUTION && rx_opt->sol)
+    {
+      tcpch_free_solution (rx_opt->sol);
+    }
+#endif
 }
 
 /* This is the max number of SACKS that we'll generate and process. It's safe

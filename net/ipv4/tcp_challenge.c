@@ -34,9 +34,12 @@ static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
  * these should only be changed by a request from the user. Otherwise they
  * retain their initial values. 
  */
-static u16 tcp_challenge_len   = TCPCH_DEFAULT_LEN;
-static u16 tcp_challenge_nz    = TCPCH_DEFAULT_NZ;
-static u16 tcp_challenge_ndiff = TCPCH_DEFAULT_NDIFF;
+u16 tcp_challenge_len   = TCPCH_DEFAULT_LEN;
+EXPORT_SYMBOL_GPL (tcp_challenge_len);
+u16 tcp_challenge_nz    = TCPCH_DEFAULT_NZ;
+EXPORT_SYMBOL_GPL (tcp_challenge_nz);
+u16 tcp_challenge_ndiff = TCPCH_DEFAULT_NDIFF;
+EXPORT_SYMBOL_GPL (tcp_challenge_ndiff);
 
 
 /* tcpch_alloc_challenge */
@@ -67,7 +70,7 @@ struct tcpch_challenge *tcpch_alloc_challenge (u64 mts, u16 mlen,
 }
 
 /* tcpch_alloc_solution */
-struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz)
+struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz, u16 mlen)
 {
   struct tcpch_solution *solution;
 
@@ -83,6 +86,7 @@ struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz)
       solution->ts = mts;
       solution->diff = diff;
       solution->nz = mnz;
+      solution->len = mlen;
       INIT_LIST_HEAD (&(solution->list));
 
       /* set the data buf to 0 */
@@ -106,6 +110,15 @@ void tcpch_free_challenge (struct tcpch_challenge *chlg)
     }
 
   /* done free the challenge */
+  kfree (chlg);
+}
+
+/* tcpch_free_challenge_safe */
+void tcpch_free_challenge_safe (struct tcpch_challenge *chlg)
+{
+  if (chlg == 0)
+      return;
+
   kfree (chlg);
 }
 
@@ -233,7 +246,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
   u8 *trial;
   u16 i;
 
-  long ts;
+  u64 ts;
 
   __be32 saddr, daddr;
   __be16 sport, dport;
@@ -320,7 +333,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
       } while (found == 0);
 
       /* allocate a solution struct and add it the list */
-      sol = tcpch_alloc_solution (ts, chlg->ndiff, chlg->nz);
+      sol = tcpch_alloc_solution (ts, chlg->ndiff, chlg->nz, chlg->len);
       sol->sbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
       memcpy (sol->sbuf, zbuf, xlen);
 
@@ -384,7 +397,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   __u32 sseq = ntohl (th->seq);
 
   /* get the timestamp in microsec */
-  long ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
+  u64 ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
 
   /* make sure the key is generated */
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
@@ -586,17 +599,24 @@ int __verify_solution (const struct iphdr *iph,
 
       /* increment count to make sure client submitted all subpuzzles */
       i++;
+
+      /* make sure we don't verify more than we need, if we did that 
+       * this might be a place for a possible attack */
+      if (i >= tcp_challenge_nz) { break; }
     }
-
-  if (i != tcp_challenge_nz)
-      ret = 0;
-
+  
   /* sanity check: remove after testing */
   if (ret != 0)
     {
-      pr_debug ("[tcp_ch:] Something weird happened here\n");
+      pr_debug ("[tcpch:] Something weird is happening in verify solution!\n");
       goto out_free_all;
     }
+
+  /* if for some reason we didn't go over all required puzzles 
+   * like the client not submitting solutions to all subpuzzles*/
+  if (i < tcp_challenge_nz)
+      ret = 0;
+
   ret = tcp_challenge_nz;
 
 out_free_all:

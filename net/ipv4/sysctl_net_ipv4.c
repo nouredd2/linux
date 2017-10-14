@@ -45,6 +45,13 @@ static int tcp_syn_retries_max = MAX_TCP_SYNCNT;
 static int ip_ping_group_range_min[] = { 0, 0 };
 static int ip_ping_group_range_max[] = { GID_T_MAX, GID_T_MAX };
 
+#ifdef CONFIG_SYN_CHALLENGE
+static int tcp_challenge_min_nz = 1;
+static int tcp_challenge_max_nz = (1 << 16);
+static int tcp_challenge_min_diff = 1;
+static int tcp_challenge_max_diff = 32;
+#endif
+
 /* Update system visible IP port range */
 static void set_local_port_range(struct net *net, int range[2])
 {
@@ -1017,6 +1024,42 @@ static struct ctl_table ipv4_net_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec
 	},
+#endif
+#ifdef CONFIG_SYN_CHALLENGE
+  {
+    .procname     = "tcp_challenges",
+    .data         = &init_net.ipv4.sysctl_tcp_challenges,
+    .maxlen       = sizeof(int),
+    .mode         = 0644,
+    .proc_handler = proc_dointvec
+  },
+  {
+    .procname     = "tcp_challenge_nz",
+    .data         = &init_net.ipv4.sysctl_tcp_challenge_nz,
+    .maxlen       = sizeof(int),
+    .mode         = 0644,
+    .proc_handler = proc_dointvec,
+    .extra1       = &tcp_challenge_min_nz,
+    .extra2       = &tcp_challenge_max_nz
+  },
+  {
+    .procname     = "tcp_challenge_len",
+    .data         = &init_net.ipv4.sysctl_tcp_challenge_len,
+    .maxlen       = sizeof(int),
+    .mode         = 0644,
+    .proc_handler = proc_dointvec,
+    .extra1       = &tcp_challenge_min_nz,
+    .extra2       = &tcp_challenge_max_nz
+  },
+  {
+    .procname     = "tcp_challenge_diff",
+    .data         = &init_net.ipv4.sysctl_tcp_challenge_diff,
+    .maxlen       = sizeof(int),
+    .mode         = 0644,
+    .proc_handler = proc_dointvec,
+    .extra1       = &tcp_challenge_min_nz,
+    .extra2       = &tcp_challenge_max_diff
+  },
 #endif
 	{
 		.procname	= "tcp_reordering",

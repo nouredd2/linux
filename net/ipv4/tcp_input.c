@@ -124,6 +124,13 @@ int sysctl_tcp_invalid_ratelimit __read_mostly = HZ/2;
 #define REXMIT_LOST	1 /* retransmit packets marked lost */
 #define REXMIT_NEW	2 /* FRTO-style transmit of unsent/new packets */
 
+
+#ifdef CONFIG_SYN_CHALLENGE
+extern u16 tcp_challenge_len;
+extern u16 tcp_challenge_nz;
+extern u16 tcp_challenge_ndiff;
+#endif
+
 static void tcp_gro_dev_warn(struct sock *sk, const struct sk_buff *skb,
 			     unsigned int len)
 {
@@ -3720,6 +3727,120 @@ static void tcp_parse_fastopen_option(int len, const unsigned char *cookie,
 	foc->exp = exp_opt;
 }
 
+#ifdef CONFIG_SYN_CHALLENGE
+static void tcp_parse_challenge (int len, const unsigned char *pktopt,
+    struct tcp_options_received *opt_rx)
+{
+  struct tcpch_challenge *chlg;
+  const unsigned char *ptr = pktopt;
+  u64 ts;
+  u16 nz;
+  u16 diff;
+  u16 clen;
+
+  /* this should be zero but just to make sure. If there was something there
+   * we shouldn't have been here!*/
+  opt_rx = 0;
+
+  /* we need at least: 8 bytes for ts, 2 for nz, 2 for diff,
+   * 2 for len and then we have the preimage which 256 bits 
+   * or 32 bytes
+   */
+  if (len < 2 + 8 + 2 + 2 + 2 + 32)
+    {
+      pr_debug ("[tcpch:] Incorrect value for option length in tcp challenge\n");
+      return;
+    }
+
+  /* get the small stuff first */
+  ts = get_unaligned_be64 (ptr);
+  ptr += 8;
+  nz = get_unaligned_be16 (ptr);
+  ptr += 2;
+  diff = get_unaligned_be16 (ptr);
+  ptr += 2;
+  clen = get_unaligned_be16 (ptr);
+  ptr += 2;
+
+  /* create the challenge */
+  chlg = tcpch_alloc_challenge (ts, clen, nz, diff);
+  if (IS_ERR(chlg))
+      return;
+
+  /* allocate the challenge buffer */
+  chlg->cbuf = kmalloc (32, GFP_KERNEL);
+  if (IS_ERR(chlg))
+    {
+      tcpch_free_challenge_safe (chlg); 
+      return;
+    }
+
+  /* copy the preimage  */
+  memcpy (chlg->cbuf, ptr, 32);
+
+  /* done parsing, set the received option and exit */
+  opt_rx->chlg = chlg;
+} /* tcp_parse_challenge */
+
+static void tcp_parse_solution (int len, const unsigned char *pktopt,
+    struct tcp_options_received *opt_rx)
+{
+  struct tcpch_solution *sol, *head;
+  const unsigned char *ptr = pktopt;
+  u64 ts;
+  u16 len_of_subc = tcp_challenge_len / 16;
+  u16 i;
+
+  /* make sure the solution pointer is 0 */
+  opt_rx->sol = 0;
+
+  /* make sure first that we have all parameters */
+  if (len < 2 + 8 + (tcp_challenge_nz * len_of_subc))
+    {
+      pr_debug ("[tcpch:] Incorrect value for option length in tcp solution\n");
+      return;
+    }
+
+  /* get the parameters */
+  ts = get_unaligned_be64 (ptr);
+  ptr += 8;
+
+
+  /* now read each sub-challenge solution and parse it */
+  head = 0;
+  for (i=0; i < tcp_challenge_nz; ++i)
+    {
+      /* allocate a solution */
+      sol = tcpch_alloc_solution (ts, tcp_challenge_ndiff,
+          tcp_challenge_nz, tcp_challenge_len);
+      if (IS_ERR(sol))
+        {
+          if (head)
+              tcpch_free_solution (head);
+          return;
+        }
+
+      /* copy the memory content of the solution */
+      memcpy(sol->sbuf, ptr, len_of_subc);
+      ptr += len_of_subc;
+
+      /* maintain the list of solutions */
+      if (!head)
+        {
+          head = sol;
+        }
+      else
+        {
+          list_add_tail (&(head->list), &(sol->list));
+        }
+    }
+
+  /* done! */
+  opt_rx->sol = head;
+
+} /* tcp_parse_solution */
+#endif
+
 /* Look for tcp options. Normally only called on SYN and SYNACK packets.
  * But, this can also be called on packets in the established flow when
  * the fast version below fails.
@@ -3828,6 +3949,22 @@ void tcp_parse_options(const struct net *net,
 						TCPOLEN_EXP_FASTOPEN_BASE,
 						ptr + 2, th->syn, foc, true);
 				break;
+
+#ifdef CONFIG_SYN_CHALLENGE
+      case TCPOPT_CHALLENGE:
+        /* Received a challenge. It should be on a syn ack 
+         * packet*/
+        if (th->syn && th->ack)
+            tcp_parse_challenge (opsize, ptr,
+              opt_rx);
+        break;
+      case TCPOPT_SOLUTION:
+        /* Received a challenge solution */
+        if (th->ack)
+            tcp_parse_solution (opsize, ptr,
+              opt_rx);
+        break;
+#endif
 
 			}
 			ptr += opsize-2;

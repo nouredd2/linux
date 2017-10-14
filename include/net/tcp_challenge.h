@@ -48,6 +48,7 @@ struct tcpch_solution {
     u64             ts;         /* the timestamp used for the subpuzzle */
     u16             nz;         /* the number of subpuzzles             */
     u16             diff;       /* the number of diffuclty bits         */
+    u16             len;        /* the length of (x+z) in the puzzles   */
     u8              *sbuf;      /* the current solution                 */
 
     struct list_head  list;     /* the list of sub-solutions contained  */
@@ -73,12 +74,13 @@ struct tcpch_challenge *tcpch_alloc_challenge(u64 mts, u16 mlen,
  * @diff: The number of bits of difficulty
  * @mnz: The number of subchallenges to be solved, this is only useful at
  *    the head of the list
+ * @mlen: The length of (x+z) in bits
  *
  * Allocate memory for a Tcp challenge solution. This will set the solution
  * data to 0 and WILL NOT allocate memory to hold the solution. This contains
  * a list head to point to the next sub challenge solution.
  */
-struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz);
+struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz, u16 mlen);
 
 /**
  * tcpch_free_challenge() - Free the space occupied by a challenge
@@ -88,6 +90,14 @@ struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz);
  * there is not need to do anything after this call
  */
 void tcpch_free_challenge (struct tcpch_challenge *chlg);
+
+/*
+ * tcpch_free_challenge_safe() -- Free the space occupied by a challenge
+ * without handling the inner buffer
+ *
+ * @chlg: challenge struct to be freed
+ */
+void tcpch_free_challenge_safe (struct tcpch_challenge *chlg);
 
 /**
  * tcpch_free_solution() - Free the space occupied by a solution
@@ -108,9 +118,32 @@ void tcpch_free_solution (struct tcpch_solution *sol);
  * @nz:   the number of sub puzzles
  * @diff: the puzzle difficulty in bits
  *
+ * @return the built challenge structure
  */
 struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
                             u16 len, u16 nz, u16 diff);
+
+/*
+ * tcpch_verify_solution () - Verify a given solution of a certain challenge
+ *
+ * @skb:     incoming packets
+ * @sol:     the solution to verify
+ *
+ * @return <= 0 if it fails and > 0 if it succeeds.
+ */
+int tcpch_verify_solution (struct sk_buff *skb,
+              struct tcpch_solution *sol);
+
+/*
+ * tcpch_solve_challenge () - Solve a given challenge
+ *
+ * @skb:     incoming packet
+ * @chlg:    the challenge to solve
+ *
+ * @return the solved challenge if successful
+ */
+struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
+              struct tcpch_challenge *chlg);
 
 
 #endif /* TCP_CHALLENGE_H */

@@ -418,6 +418,8 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_MD5		(1 << 2)
 #define OPTION_WSCALE		(1 << 3)
 #define OPTION_FAST_OPEN_COOKIE	(1 << 8)
+#define OPTION_SYN_CHALLENGE (1 << 4)
+#define OPTION_SYN_SOLUTION (1 << 5)
 
 struct tcp_out_options {
 	u16 options;		/* bit field of OPTION_* */
@@ -428,7 +430,26 @@ struct tcp_out_options {
 	__u8 *hash_location;	/* temporary pointer, overloaded */
 	__u32 tsval, tsecr;	/* need to include OPTION_TS */
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
+
+#ifdef CONFIG_SYN_CHALLENGE
+  u8 ctype;
+  union {
+      /* only one of these should be here! */
+      struct tcpch_challenge *chlg; /* send a tcp challenge */
+      struct tcpch_solution *sol;   /* send a tcp challenge solution */
+  };
+#endif
 };
+
+#ifdef CONFIG_SYN_CHALLENGE
+extern u16 tcp_challenge_len;
+extern u16 tcp_challenge_nz;
+extern u16 tcp_challenge_ndiff;
+#endif
+
+/* useful macros */
+#define ntohll(x) be64_to_cpu(x)
+#define htonll(x) cpu_to_be64(x)
 
 /* Write previously computed TCP options to the packet.
  *
@@ -446,6 +467,15 @@ struct tcp_out_options {
 static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 			      struct tcp_out_options *opts)
 {
+#ifdef CONFIG_SYN_COOKIES
+  struct tcpch_challenge *chlg;
+  struct tcpch_solution *sol;
+  u16 syn_challenge_opt_len;
+  u8 *p8;
+  u16 *p16;
+  u64 *p64;
+#endif
+
 	u16 options = opts->options;	/* mungable copy */
 
 	if (unlikely(OPTION_MD5 & options)) {
@@ -536,6 +566,96 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 		}
 		ptr += (len + 3) >> 2;
 	}
+
+#ifdef CONFIG_SYN_CHALLENGE
+  if (OPTION_SYN_CHALLENGE & options)
+    {
+      chlg = opts->chlg;
+      /* calculate the length of the options field 
+       * 2 for the first two bytes of the options
+       * 8 for the timestamp
+       * 2 for the number of subpuzzles
+       * 2 for the number of difficulty bits
+       * 2 for the length of solution *2
+       */
+      syn_challenge_opt_len = 2 + 8 + 2 + 2 + 2 + 32;
+
+      /* put in the option header */
+      p16 = (u16 *)ptr;
+      *p16++ = htons (((u16)(TCPOPT_CHALLENGE << 8)) | 
+                syn_challenge_opt_len);
+
+      /* throw in the timestamp */
+      p64 = (u64 *)p16;
+      *p64++ = htonll (chlg->ts);
+
+      /* now the parameters */
+      p16 = (u16 *)p64;
+      *p16++ = htons (chlg->nz);
+      *p16++ = htons (chlg->ndiff);
+      *p16++ = htons (chlg->len);
+
+      /* now the data */
+      p8 = (u8 *)p16;
+      memcpy (p8, chlg->cbuf, 32);
+
+      /* done advance the main pointer */
+      ptr += syn_challenge_opt_len >> 2; /* this should be 48/4 = 12 */
+    }
+  else if (OPTION_SYN_SOLUTION & options)
+    {
+      sol = opts->sol;
+      /* calculate the length of the option field
+       * 2 for the first two bytes of the option
+       * 8 for the timestamp
+       * nz * l/16 for the solutions
+       */
+      syn_challenge_opt_len = 2 + 8 + (sol->nz * (sol->len/16));
+      if (syn_challenge_opt_len > 255)
+        {
+          pr_debug ("Length of solution not allowed!\n");
+          return;
+        }
+
+      /* put in the option header */
+      p16 = (u16 *)ptr;
+      *p16++ = htons (((u16)(TCPOPT_SOLUTION << 8)) | 
+                syn_challenge_opt_len);
+
+      /* throw in the timestamp */
+      p64 = (u64 *)p16;
+      *p64++ = htonll (sol->ts);
+
+      /* now the solutions */
+      p8 = (u8 *)p64;
+      list_for_each_entry (sol, &(sol->list), list)
+        {
+          memcpy (p8, sol->sbuf, (sol->len/16));
+          p8 += (sol->len/16);
+        }
+
+      /* how to do the alignment */
+      if ((syn_challenge_opt_len & 3) == 2)
+        {
+          *p8 = TCPOPT_NOP;
+          *(++p8) = TCPOPT_NOP;
+        }
+      /* i added these for safety */
+      else if ((syn_challenge_opt_len & 3) == 1)
+        {
+          *p8 = TCPOPT_NOP;
+          *(++p8) = TCPOPT_NOP;
+          *(++p8) = TCPOPT_NOP;
+        }
+      else if ((syn_challenge_opt_len & 3) == 3)
+        {
+          *p8 = TCPOPT_NOP;
+        }
+
+      /* done, advance the pointers */
+      ptr += (syn_challenge_opt_len + 3) >> 2;
+    }
+#endif
 }
 
 /* Compute TCP options for SYN packets. This is not the final

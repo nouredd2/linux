@@ -115,6 +115,10 @@ struct netns_ipv4 {
 	int sysctl_tcp_syn_retries;
 	int sysctl_tcp_synack_retries;
 	int sysctl_tcp_syncookies;
+  int sysctl_tcp_challenges;
+  int sysctl_tcp_challenge_nz;
+  int sysctl_tcp_challenge_len;
+  int sysctl_tcp_challenge_diff;
 	int sysctl_tcp_reordering;
 	int sysctl_tcp_retries1;
 	int sysctl_tcp_retries2;
