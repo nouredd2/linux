@@ -1057,7 +1057,7 @@ static struct ctl_table ipv4_net_table[] = {
     .maxlen       = sizeof(int),
     .mode         = 0644,
     .proc_handler = proc_dointvec,
-    .extra1       = &tcp_challenge_min_nz,
+    .extra1       = &tcp_challenge_min_diff,
     .extra2       = &tcp_challenge_max_diff
   },
 #endif

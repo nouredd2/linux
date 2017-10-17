@@ -113,6 +113,7 @@ void tcpch_free_solution (struct tcpch_solution *sol);
  * tcpch_generate_challenge () - Generate challenge from a give packet
  *                  and some configuration parameters
  *
+ * @sk:   the handling socket
  * @skb:  incoming packet
  * @len:  the length of the challenge in bits
  * @nz:   the number of sub puzzles
@@ -120,18 +121,19 @@ void tcpch_free_solution (struct tcpch_solution *sol);
  *
  * @return the built challenge structure
  */
-struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
-                            u16 len, u16 nz, u16 diff);
+struct tcpch_challenge *tcpch_generate_challenge (struct sock *sk,
+        struct sk_buff *skb, u16 len, u16 nz, u16 diff);
 
 /*
  * tcpch_verify_solution () - Verify a given solution of a certain challenge
  *
+ * @sk:      the handling socket
  * @skb:     incoming packets
  * @sol:     the solution to verify
  *
  * @return <= 0 if it fails and > 0 if it succeeds.
  */
-int tcpch_verify_solution (struct sk_buff *skb,
+int tcpch_verify_solution (struct sock *sk, struct sk_buff *skb,
               struct tcpch_solution *sol);
 
 /*

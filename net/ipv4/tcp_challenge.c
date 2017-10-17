@@ -30,18 +30,6 @@
  */
 static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
 
-/* keep the puzzle difficulty parameters static to be used by every socket,
- * these should only be changed by a request from the user. Otherwise they
- * retain their initial values. 
- */
-u16 tcp_challenge_len   = TCPCH_DEFAULT_LEN;
-EXPORT_SYMBOL_GPL (tcp_challenge_len);
-u16 tcp_challenge_nz    = TCPCH_DEFAULT_NZ;
-EXPORT_SYMBOL_GPL (tcp_challenge_nz);
-u16 tcp_challenge_ndiff = TCPCH_DEFAULT_NDIFF;
-EXPORT_SYMBOL_GPL (tcp_challenge_ndiff);
-
-
 /* tcpch_alloc_challenge */
 struct tcpch_challenge *tcpch_alloc_challenge (u64 mts, u16 mlen,
     u16 mnz, u16 mndiff)
@@ -473,20 +461,24 @@ out:
 } /*  __generate_challenge */
 
 /* challenge generation from a specific packet */
-struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
+struct tcpch_challenge *tcpch_generate_challenge (struct sock *sk, struct sk_buff *skb,
     u16 len, u16 nz, u16 diff)
 {
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
   struct timeval stamp;
+  const struct net *net = sock_net (sk);
   
   skb_get_timestamp (skb, &stamp);
 
-  return __generate_challenge (iph, th, &stamp, len, nz, diff);
+  return __generate_challenge (iph, th, &stamp, 
+            net->ipv4.sysctl_tcp_challenge_len, 
+            net->ipv4.sysctl_tcp_challenge_nz, 
+            net->ipv4.sysctl_tcp_challenge_diff);
 } /* tcpch_generate_challenge */
 EXPORT_SYMBOL_GPL (tcpch_generate_challenge);
 
-int __verify_solution (const struct iphdr *iph,
+int __verify_solution (const struct net *net, const struct iphdr *iph,
     const struct tcphdr *th, struct timeval *stamp,
     struct tcpch_solution *sol)
 {
@@ -560,7 +552,7 @@ int __verify_solution (const struct iphdr *iph,
     }
   crypto_shash_final (sdesc, digest);
 
-  xlen = tcp_challenge_len / 16;
+  xlen = net->ipv4.sysctl_tcp_challenge_len / 16;
   xbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
   if (IS_ERR(xbuf))
     {
@@ -589,7 +581,7 @@ int __verify_solution (const struct iphdr *iph,
       err = crypto_shash_final (sdesc, digest);
 
       /* compate the bits of the computed hash with x */
-      ret = __tcpch_compare_bits (digest, xbuf, tcp_challenge_ndiff);
+      ret = __tcpch_compare_bits (digest, xbuf, net->ipv4.sysctl_tcp_challenge_diff);
       if (ret != 0)
         {
           /* one of the sub puzzles failed */
@@ -602,7 +594,7 @@ int __verify_solution (const struct iphdr *iph,
 
       /* make sure we don't verify more than we need, if we did that 
        * this might be a place for a possible attack */
-      if (i >= tcp_challenge_nz) { break; }
+      if (i >= net->ipv4.sysctl_tcp_challenge_nz) { break; }
     }
   
   /* sanity check: remove after testing */
@@ -614,10 +606,10 @@ int __verify_solution (const struct iphdr *iph,
 
   /* if for some reason we didn't go over all required puzzles 
    * like the client not submitting solutions to all subpuzzles*/
-  if (i < tcp_challenge_nz)
+  if (i < net->ipv4.sysctl_tcp_challenge_nz)
       ret = 0;
 
-  ret = tcp_challenge_nz;
+  ret = net->ipv4.sysctl_tcp_challenge_nz;
 
 out_free_all:
   kfree(xbuf);
@@ -630,15 +622,16 @@ out:
   return ret;
 } /* __verify_solution */
 
-int tcpch_verify_solution (struct sk_buff *skb,
+int tcpch_verify_solution (struct sock *sk, struct sk_buff *skb,
     struct tcpch_solution *sol)
 {
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
   struct timeval stamp;
+  const struct net *net = sock_net (sk);
 
   skb_get_timestamp (skb, &stamp);
 
-  return __verify_solution (iph, th, &stamp, sol);
+  return __verify_solution (net, iph, th, &stamp, sol);
 }
 EXPORT_SYMBOL_GPL (tcpch_verify_solution);

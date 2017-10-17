@@ -441,12 +441,6 @@ struct tcp_out_options {
 #endif
 };
 
-#ifdef CONFIG_SYN_CHALLENGE
-extern u16 tcp_challenge_len;
-extern u16 tcp_challenge_nz;
-extern u16 tcp_challenge_ndiff;
-#endif
-
 /* useful macros */
 #define ntohll(x) be64_to_cpu(x)
 #define htonll(x) cpu_to_be64(x)

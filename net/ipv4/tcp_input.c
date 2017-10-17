@@ -125,12 +125,6 @@ int sysctl_tcp_invalid_ratelimit __read_mostly = HZ/2;
 #define REXMIT_NEW	2 /* FRTO-style transmit of unsent/new packets */
 
 
-#ifdef CONFIG_SYN_CHALLENGE
-extern u16 tcp_challenge_len;
-extern u16 tcp_challenge_nz;
-extern u16 tcp_challenge_ndiff;
-#endif
-
 static void tcp_gro_dev_warn(struct sock *sk, const struct sk_buff *skb,
 			     unsigned int len)
 {
@@ -3728,7 +3722,7 @@ static void tcp_parse_fastopen_option(int len, const unsigned char *cookie,
 }
 
 #ifdef CONFIG_SYN_CHALLENGE
-static void tcp_parse_challenge (int len, const unsigned char *pktopt,
+static inline void tcp_parse_challenge (int len, const unsigned char *pktopt,
     struct tcp_options_received *opt_rx)
 {
   struct tcpch_challenge *chlg;
@@ -3782,20 +3776,21 @@ static void tcp_parse_challenge (int len, const unsigned char *pktopt,
   opt_rx->chlg = chlg;
 } /* tcp_parse_challenge */
 
-static void tcp_parse_solution (int len, const unsigned char *pktopt,
+static inline void tcp_parse_solution (const struct net *net, 
+    int len, const unsigned char *pktopt,
     struct tcp_options_received *opt_rx)
 {
   struct tcpch_solution *sol, *head;
   const unsigned char *ptr = pktopt;
   u64 ts;
-  u16 len_of_subc = tcp_challenge_len / 16;
+  u16 len_of_subc = net->ipv4.sysctl_tcp_challenge_len / 16;
   u16 i;
 
   /* make sure the solution pointer is 0 */
   opt_rx->sol = 0;
 
   /* make sure first that we have all parameters */
-  if (len < 2 + 8 + (tcp_challenge_nz * len_of_subc))
+  if (len < 2 + 8 + (net->ipv4.sysctl_tcp_challenge_nz * len_of_subc))
     {
       pr_debug ("[tcpch:] Incorrect value for option length in tcp solution\n");
       return;
@@ -3808,11 +3803,11 @@ static void tcp_parse_solution (int len, const unsigned char *pktopt,
 
   /* now read each sub-challenge solution and parse it */
   head = 0;
-  for (i=0; i < tcp_challenge_nz; ++i)
+  for (i=0; i < net->ipv4.sysctl_tcp_challenge_nz; ++i)
     {
       /* allocate a solution */
-      sol = tcpch_alloc_solution (ts, tcp_challenge_ndiff,
-          tcp_challenge_nz, tcp_challenge_len);
+      sol = tcpch_alloc_solution (ts, net->ipv4.sysctl_tcp_challenge_diff,
+          net->ipv4.sysctl_tcp_challenge_nz, net->ipv4.sysctl_tcp_challenge_len);
       if (IS_ERR(sol))
         {
           if (head)
@@ -3961,7 +3956,7 @@ void tcp_parse_options(const struct net *net,
       case TCPOPT_SOLUTION:
         /* Received a challenge solution */
         if (th->ack)
-            tcp_parse_solution (opsize, ptr,
+            tcp_parse_solution (net, opsize, ptr,
               opt_rx);
         break;
 #endif
