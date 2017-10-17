@@ -6399,6 +6399,12 @@ static bool tcp_syn_flood_action(const struct sock *sk,
 		want_cookie = true;
 		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCOOKIES);
 	} else
+#elif defined CONFIG_SYN_CHALLENGE
+  if (net->ipv4.sysctl_tcp_synchallenges) {
+      msg = "Sending challenges";
+      want_cookie = true;
+      __NET_INC_STATES(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCHALLENGES);
+  } else
 #endif
 		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDROP);
 
@@ -6441,6 +6447,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	struct dst_entry *dst = NULL;
 	struct request_sock *req;
 	bool want_cookie = false;
+  bool want_challenge = false;
 	struct flowi fl;
 
 	/* TW buckets are converted to open requests without
@@ -6453,6 +6460,9 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		if (!want_cookie)
 			goto drop;
 	}
+
+  /* check if need to add challenges and override cookies */
+  want_challenge = want_cookie? (net->ipv4.sysctl_tcp_synchallenges > 0):false;
 
 	if (sk_acceptq_is_full(sk)) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
