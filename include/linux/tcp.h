@@ -166,6 +166,12 @@ struct tcp_request_sock {
 						  * FastOpen it's the seq#
 						  * after data-in-SYN.
 						  */
+
+  /* keep track if we need to build up a challenge
+   * or a solution or none at all */
+#ifdef CONFIG_SYN_COOKIES
+  enum syn_challenge_type ctype;
+#endif
 };
 
 static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)

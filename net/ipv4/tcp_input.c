@@ -6461,14 +6461,20 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 			goto drop;
 	}
 
-  /* check if need to add challenges and override cookies */
-  want_challenge = want_cookie? (net->ipv4.sysctl_tcp_synchallenges > 0):false;
+  if (net->ipv4.sysctl_tcp_challenges == 2) {
+      want_cookie = true;
+      want_challenge = true;
+  } else {
+      /* check if need to add challenges and override cookies */
+      want_challenge = want_cookie? (net->ipv4.sysctl_tcp_challenges > 0):false;
+  }
 
 	if (sk_acceptq_is_full(sk)) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
 		goto drop;
 	}
 
+  /* attach_listener = !want_cookie */
 	req = inet_reqsk_alloc(rsk_ops, sk, !want_cookie);
 	if (!req)
 		goto drop;
@@ -6476,13 +6482,18 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	tcp_rsk(req)->af_specific = af_ops;
 	tcp_rsk(req)->ts_off = 0;
 
+  if (want_challenge)
+      tcp_rsk(req)->ctype = SYN_CHALLENGE;
+  else
+      tcp_rsk(req)->ctype = SYN_NONE;
+
 	tcp_clear_options(&tmp_opt);
 	tmp_opt.mss_clamp = af_ops->mss_clamp;
 	tmp_opt.user_mss  = tp->rx_opt.user_mss;
 	tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0,
 			  want_cookie ? NULL : &foc);
 
-	if (want_cookie && !tmp_opt.saw_tstamp)
+	if (want_cookie && !tmp_opt.saw_tstamp && !want_challenge)
 		tcp_clear_options(&tmp_opt);
 
 	tmp_opt.tstamp_ok = tmp_opt.saw_tstamp;
@@ -6519,7 +6530,10 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		}
 
 		isn = af_ops->init_seq(skb);
-	}
+	} else if (want_challenge && !isn) {
+    /* no need for special handling of the initial sequence number */
+    isn = af_ops->init_seq(skb);
+  }
 	if (!dst) {
 		dst = af_ops->route_req(sk, &fl, req);
 		if (!dst)
@@ -6528,7 +6542,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 
 	tcp_ecn_create_request(req, skb, sk, dst);
 
-	if (want_cookie) {
+	if (want_cookie && !want_challenge) {
 		isn = cookie_init_sequence(af_ops, sk, skb, &req->mss);
 		req->cookie_ts = tmp_opt.tstamp_ok;
 		if (!tmp_opt.tstamp_ok)
@@ -6555,12 +6569,13 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		if (!want_cookie)
 			inet_csk_reqsk_queue_hash_add(sk, req,
 				tcp_timeout_init((struct sock *)req));
-		af_ops->send_synack(sk, dst, &fl, req, &foc,
-				    !want_cookie ? TCP_SYNACK_NORMAL :
-						   TCP_SYNACK_COOKIE);
+
+    enum tcp_synack_type stype = !want_cookie? TCP_SYNACK_NORMAL :
+          (want_challenge? TCP_SYNACK_CHALLENGE : TCP_SYNACK_COOKIE);
+		af_ops->send_synack(sk, dst, &fl, req, &foc, stype);
 		if (want_cookie) {
 			reqsk_free(req);
-			return 0;
+			return 0; /* both cookies and challenges exit here */
 		}
 	}
 	reqsk_put(req);
