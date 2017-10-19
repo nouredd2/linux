@@ -644,5 +644,7 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
 
   /* align to 32 bits */
   need = (need + 3) & ~3U;
+
+  return need;
 }
 EXPORT_SYMBOL (tcpch_get_length);
