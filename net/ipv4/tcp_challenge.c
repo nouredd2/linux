@@ -360,7 +360,7 @@ EXPORT_SYMBOL_GPL (tcpch_solve_challenge);
 
 /* internal challenge generation */
 struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
-    const struct tcphdr *th, struct timeval *stamp,
+    const struct tcphdr *th, u64 ts,
     u16 len, u16 nz, u16 diff)
 {
   struct crypto_shash     *alg;
@@ -383,9 +383,6 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   /* also keep the initial sequence number */
   __u32 sseq = ntohl (th->seq);
-
-  /* get the timestamp in microsec */
-  u64 ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
 
   /* make sure the key is generated */
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
@@ -418,7 +415,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
-  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (long));
+  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u64));
 
   digestsize = crypto_shash_digestsize (alg);
   digest = (u8 *) kmalloc (digestsize, GFP_KERNEL);
@@ -461,20 +458,16 @@ out:
 } /*  __generate_challenge */
 
 /* challenge generation from a specific packet */
-struct tcpch_challenge *tcpch_generate_challenge (struct sock *sk, struct sk_buff *skb,
+struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
     u16 len, u16 nz, u16 diff)
 {
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
-  struct timeval stamp;
-  const struct net *net = sock_net (sk);
-  
-  skb_get_timestamp (skb, &stamp);
+  /* const struct net *net = sock_net (sk); */
+  u64 ts = skb->skb_mstamp;
 
-  return __generate_challenge (iph, th, &stamp, 
-            net->ipv4.sysctl_tcp_challenge_len, 
-            net->ipv4.sysctl_tcp_challenge_nz, 
-            net->ipv4.sysctl_tcp_challenge_diff);
+  return __generate_challenge (iph, th, ts, 
+      len, nz, diff);
 } /* tcpch_generate_challenge */
 EXPORT_SYMBOL_GPL (tcpch_generate_challenge);
 
@@ -540,7 +533,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
-  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (long));
+  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u64));
 
   dsize = crypto_shash_digestsize (alg);
   digest = (u8 *) kmalloc (dsize, GFP_KERNEL);
@@ -635,3 +628,21 @@ int tcpch_verify_solution (struct sock *sk, struct sk_buff *skb,
   return __verify_solution (net, iph, th, &stamp, sol);
 }
 EXPORT_SYMBOL_GPL (tcpch_verify_solution);
+
+u32 tcpch_get_length (struct tcpch_challenge *chlg)
+{
+  u32 need;
+  if (!chlg)
+      return 0;
+
+  /* calculate how much space do we need in bytes */
+  need = (8 /* for timestamp */ +
+            2 /* for nz */ +
+            2 /* for diff */ +
+            2 /* for len */ +
+            chlg->len/16 /* length of preimage */);
+
+  /* align to 32 bits */
+  need = (need + 3) & ~3U;
+}
+EXPORT_SYMBOL (tcpch_get_length);

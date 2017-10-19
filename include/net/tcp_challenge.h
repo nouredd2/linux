@@ -113,7 +113,6 @@ void tcpch_free_solution (struct tcpch_solution *sol);
  * tcpch_generate_challenge () - Generate challenge from a give packet
  *                  and some configuration parameters
  *
- * @sk:   the handling socket
  * @skb:  incoming packet
  * @len:  the length of the challenge in bits
  * @nz:   the number of sub puzzles
@@ -121,8 +120,8 @@ void tcpch_free_solution (struct tcpch_solution *sol);
  *
  * @return the built challenge structure
  */
-struct tcpch_challenge *tcpch_generate_challenge (struct sock *sk,
-        struct sk_buff *skb, u16 len, u16 nz, u16 diff);
+struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
+    u16 len, u16 nz, u16 diff);
 
 /*
  * tcpch_verify_solution () - Verify a given solution of a certain challenge
@@ -146,6 +145,15 @@ int tcpch_verify_solution (struct sock *sk, struct sk_buff *skb,
  */
 struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
               struct tcpch_challenge *chlg);
+
+/*
+ * tcpch_get_length () - Get the length of a challenge in bytes. Aligned to 32 bits
+ *
+ * @chlg:   The challenge to compute the length for
+ *
+ * @return the challenge's length in bytes aligned to 32 bits
+ */
+u32 tcpch_get_length (struct tcpch_challenge *chlg);
 
 
 #endif /* TCP_CHALLENGE_H */

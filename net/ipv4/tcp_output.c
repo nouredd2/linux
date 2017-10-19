@@ -432,7 +432,7 @@ struct tcp_out_options {
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
 
 #ifdef CONFIG_SYN_CHALLENGE
-  u8 ctype;
+  enum syn_challenge_type ctype;
   union {
       /* only one of these should be here! */
       struct tcpch_challenge *chlg; /* send a tcp challenge */
@@ -572,7 +572,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
        * 2 for the number of difficulty bits
        * 2 for the length of solution *2
        */
-      syn_challenge_opt_len = 2 + 8 + 2 + 2 + 2 + 32;
+      syn_challenge_opt_len = 2 + 8 + 2 + 2 + 2 + chlg->len/16; 
 
       /* put in the option header */
       p16 = (u16 *)ptr;
@@ -591,10 +591,28 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 
       /* now the data */
       p8 = (u8 *)p16;
-      memcpy (p8, chlg->cbuf, 32);
+      memcpy (p8, chlg->cbuf, chlg->len/16);
+
+      /* how to do the alignment */
+      if ((syn_challenge_opt_len & 3) == 2)
+        {
+          *p8 = TCPOPT_NOP;
+          *(++p8) = TCPOPT_NOP;
+        }
+      /* i added these for safety */
+      else if ((syn_challenge_opt_len & 3) == 1)
+        {
+          *p8 = TCPOPT_NOP;
+          *(++p8) = TCPOPT_NOP;
+          *(++p8) = TCPOPT_NOP;
+        }
+      else if ((syn_challenge_opt_len & 3) == 3)
+        {
+          *p8 = TCPOPT_NOP;
+        }
 
       /* done advance the main pointer */
-      ptr += syn_challenge_opt_len >> 2; /* this should be 48/4 = 12 */
+      ptr += (syn_challenge_opt_len + 3)>> 2; 
     }
   else if (OPTION_SYN_SOLUTION & options)
     {
@@ -721,7 +739,8 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 }
 
 /* Set up TCP options for SYN-ACKs. */
-static unsigned int tcp_synack_options(struct request_sock *req,
+static unsigned int tcp_synack_options(const struct sock *sk,
+               struct request_sock *req,
 				       unsigned int mss, struct sk_buff *skb,
 				       struct tcp_out_options *opts,
 				       const struct tcp_md5sig_key *md5,
@@ -729,6 +748,10 @@ static unsigned int tcp_synack_options(struct request_sock *req,
 {
 	struct inet_request_sock *ireq = inet_rsk(req);
 	unsigned int remaining = MAX_TCP_OPTION_SPACE;
+#ifdef CONFIG_SYN_CHALLENGE
+  struct tcpch_challenge *chlg;
+  const struct net *net = sock_net (sk);
+#endif 
 
 #ifdef CONFIG_TCP_MD5SIG
 	if (md5) {
@@ -747,6 +770,31 @@ static unsigned int tcp_synack_options(struct request_sock *req,
 	/* We always send an MSS option. */
 	opts->mss = mss;
 	remaining -= TCPOLEN_MSS_ALIGNED;
+
+  /* want_challenge should always take precedence over everything else
+   * in the setup */
+#ifdef CONFIG_SYN_COOKIES
+  if (unlikely(want_challenge)) {
+    /* build the challenge here, can use skb->skb_mstamp 
+     * for the time stamp to build the challenge
+     */
+    chlg = tcpch_generate_challenge (skb, net->ipv4.sysctl_tcp_challenge_len,
+            net->ipv4.sysctl_tcp_challenge_nz,
+            net->ipv4.sysctl_tcp_challenge_diff);
+
+    if ( unlikely (IS_ERR(chlg)) ) {
+      pr_debug ("Failed to initialize challenge.\n");
+      return -1;
+    }
+    opts->options |= OPTION_SYN_CHALLENGE;
+    opts->chlg = chlg;
+    opts->ctype = SYN_CHALLENGE;
+    /* tcpch_get_length returns length aligned to 32 bits */
+    remaining -= tcpch_get_length (chlg);
+    pr_debug ("Need %d bytes for challange in options."
+                "What remains is %d\n", tcpch_get_length(chlg), remaining);
+  }
+#endif
 
 	if (likely(ireq->wscale_ok)) {
 		opts->ws = ireq->rcv_wscale;
@@ -776,12 +824,6 @@ static unsigned int tcp_synack_options(struct request_sock *req,
 			remaining -= need;
 		}
 	}
-
-  if (unlikely(want_challenge)) {
-    /* build the challenge here, can use skb->skb_mstamp 
-     * for the time stamp to build the challenge
-     */
-  }
 
 	return MAX_TCP_OPTION_SPACE - remaining;
 }
@@ -3317,7 +3359,7 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	md5 = tcp_rsk(req)->af_specific->req_md5_lookup(sk, req_to_sk(req));
 #endif
 	skb_set_hash(skb, tcp_rsk(req)->txhash, PKT_HASH_TYPE_L4);
-	tcp_header_size = tcp_synack_options(req, mss, skb, &opts, md5, foc, want_cookie) +
+	tcp_header_size = tcp_synack_options(sk, req, mss, skb, &opts, md5, foc, want_cookie) +
 			  sizeof(*th);
 
 	skb_push(skb, tcp_header_size);

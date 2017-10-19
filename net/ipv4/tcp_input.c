@@ -6449,6 +6449,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	bool want_cookie = false;
   bool want_challenge = false;
 	struct flowi fl;
+  enum tcp_synack_type stype;
 
 	/* TW buckets are converted to open requests without
 	 * limitations, they conserve resources and peer is
@@ -6570,7 +6571,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 			inet_csk_reqsk_queue_hash_add(sk, req,
 				tcp_timeout_init((struct sock *)req));
 
-    enum tcp_synack_type stype = !want_cookie? TCP_SYNACK_NORMAL :
+    stype = !want_cookie? TCP_SYNACK_NORMAL :
           (want_challenge? TCP_SYNACK_CHALLENGE : TCP_SYNACK_COOKIE);
 		af_ops->send_synack(sk, dst, &fl, req, &foc, stype);
 		if (want_cookie) {

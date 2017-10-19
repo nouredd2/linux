@@ -118,7 +118,7 @@ struct tcp_options_received {
 	u16	mss_clamp;	/* Maximal mss, negotiated at connection setup */
 
 #ifdef CONFIG_SYN_CHALLENGE
-  u8 ctype;
+  enum syn_challenge_type ctype;
   union {
       /* cannot have both a challenge and a solution */
       struct tcpch_challenge *chlg; /* a tcp challenge if available */
