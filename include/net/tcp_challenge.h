@@ -155,5 +155,14 @@ struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
  */
 u32 tcpch_get_length (struct tcpch_challenge *chlg);
 
+/*
+ * tcpch_get_solution_length () - Get the length of a solution in bytes. Aligned to 32 bits
+ *
+ * @sol:    The solution to compute the length for
+ *
+ * @return the solution's length in bytes aligned to 32 bits
+ */
+u32 tcpch_get_solution_length (struct tcpch_solution *sol);
+
 
 #endif /* TCP_CHALLENGE_H */

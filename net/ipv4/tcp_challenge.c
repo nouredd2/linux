@@ -648,3 +648,18 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
   return need;
 }
 EXPORT_SYMBOL (tcpch_get_length);
+
+u32 tcpch_get_solution_length (struct tcpch_solution *sol)
+{
+  u32 need;
+  if (!sol)
+      return 0;
+
+  /* calculate how much space do we need in bytes */
+  need = 8 /* for timestamp */ + sol->nz * (sol->len / 16);
+
+  /* align to 32 bits */
+  need = (need + 3) & ~3U;
+  return need;
+}
+EXPORT_SYMBOL(tcpch_get_solution_length);
