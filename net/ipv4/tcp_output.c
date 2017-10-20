@@ -467,7 +467,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
   u16 syn_challenge_opt_len;
   u8 *p8;
   u16 *p16;
-  u64 *p64;
+  u32 *p32;
 #endif
 
 	u16 options = opts->options;	/* mungable copy */
@@ -492,12 +492,12 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
       chlg = opts->chlg;
       /* calculate the length of the options field 
        * 2 for the first two bytes of the options
-       * 8 for the timestamp
-       * 2 for the number of subpuzzles
-       * 2 for the number of difficulty bits
-       * 2 for the length of solution *2
+       * 4 for the timestamp
+       * 1 for the number of subpuzzles
+       * 1 for the number of difficulty bits
+       * 1 for the length of solution *2
        */
-      syn_challenge_opt_len = 2 + 8 + 2 + 2 + 2 + chlg->len/16; 
+      syn_challenge_opt_len = 2 + 4 + 1 + 1 + 1 + chlg->len/16; 
 
       /* put in the option header */
       p16 = (u16 *)ptr;
@@ -505,18 +505,18 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
                 syn_challenge_opt_len);
 
       /* throw in the timestamp */
-      p64 = (u64 *)p16;
-      *p64++ = htonll (chlg->ts);
+      p32 = (u32 *)p16;
+      *p32++ = htonl (chlg->ts);
 
       /* now the parameters */
-      p16 = (u16 *)p64;
-      *p16++ = htons (chlg->nz);
-      *p16++ = htons (chlg->ndiff);
-      *p16++ = htons (chlg->len);
+      p8 = (u8 *)p32;
+      *p8++ = chlg->nz;
+      *p8++ = chlg->ndiff;
+      *p8++ = chlg->len;
 
       /* now the data */
-      p8 = (u8 *)p16;
       memcpy (p8, chlg->cbuf, chlg->len/16);
+      p8 += chlg->len/16;
 
       /* how to do the alignment */
       if ((syn_challenge_opt_len & 3) == 2)
@@ -547,7 +547,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
        * 8 for the timestamp
        * nz * l/16 for the solutions
        */
-      syn_challenge_opt_len = 2 + 8 + (sol->nz * (sol->len/16));
+      syn_challenge_opt_len = 2 + 4 + (sol->nz * (sol->len/16));
       if (syn_challenge_opt_len > 255)
         {
           pr_debug ("Length of solution not allowed!\n");
@@ -560,11 +560,11 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
                 syn_challenge_opt_len);
 
       /* throw in the timestamp */
-      p64 = (u64 *)p16;
-      *p64++ = htonll (sol->ts);
+      p32 = (u32 *)p16;
+      *p32++ = htonl (sol->ts);
 
       /* now the solutions */
-      p8 = (u8 *)p64;
+      p8 = (u8 *)p32;
       list_for_each_entry (sol, &(sol->list), list)
         {
           memcpy (p8, sol->sbuf, (sol->len/16));

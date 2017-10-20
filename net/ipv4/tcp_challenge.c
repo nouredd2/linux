@@ -22,6 +22,7 @@
 
 #include <net/tcp.h>
 #include <linux/tcp.h>
+#include <net/secure_seq.h>
 
 #include <net/tcp_challenge.h>
 
@@ -31,8 +32,8 @@
 static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
 
 /* tcpch_alloc_challenge */
-struct tcpch_challenge *tcpch_alloc_challenge (u64 mts, u16 mlen,
-    u16 mnz, u16 mndiff)
+struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u8 mlen,
+    u8 mnz, u8 mndiff)
 {
   struct tcpch_challenge *chlg;
   
@@ -58,7 +59,7 @@ struct tcpch_challenge *tcpch_alloc_challenge (u64 mts, u16 mlen,
 }
 
 /* tcpch_alloc_solution */
-struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz, u16 mlen)
+struct tcpch_solution *tcpch_alloc_solution (u32 mts, u8 diff, u8 mnz, u8 mlen)
 {
   struct tcpch_solution *solution;
 
@@ -218,7 +219,7 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
 } /* __tcpch_compare_bits */
 
 struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
-    const struct tcphdr *th, struct timeval *stamp,
+    const struct tcphdr *th,
     struct tcpch_challenge *chlg)
 {
   struct crypto_shash     *alg;
@@ -228,13 +229,13 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
   int err;
   int dsize;
   int found;
-  u16 xlen;
+  u8 xlen;
   u8 *xbuf;
   u8 *zbuf;
   u8 *trial;
   u16 i;
 
-  u64 ts;
+  u32 ts;
 
   __be32 saddr, daddr;
   __be16 sport, dport;
@@ -248,7 +249,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
   dport = th->dest;
 
   /* get the timestamp in microsec */
-  ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
+  ts = chlg->ts;
 
   /* create the hash algorithm */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
@@ -350,18 +351,15 @@ struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
 {
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
-  struct timeval stamp;
 
-  skb_get_timestamp (skb, &stamp);
-
-  return __solve_challenge (iph, th, &stamp, chlg);
+  return __solve_challenge (iph, th, chlg);
 }
 EXPORT_SYMBOL_GPL (tcpch_solve_challenge);
 
 /* internal challenge generation */
 struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
-    const struct tcphdr *th, u64 ts,
-    u16 len, u16 nz, u16 diff)
+    const struct tcphdr *th, u32 ts,
+    u8 len, u8 nz, u8 diff)
 {
   struct crypto_shash     *alg;
   struct shash_desc       *sdesc;
@@ -369,9 +367,10 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   int  err;
   int  digestsize;
-  u16  xlen;
+  u8  xlen;
   u8   *digest;
   u8   *xbuf;
+  u8 i;
 
   /* get source and destination addresses */
   __be32 saddr = iph->saddr;
@@ -415,7 +414,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
-  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u64));
+  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   digestsize = crypto_shash_digestsize (alg);
   digest = (u8 *) kmalloc (digestsize, GFP_KERNEL);
@@ -443,6 +442,12 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   /* grab the bytes */
   memcpy (xbuf, digest, xlen);
 
+  printk ("Generated the preimage: ");
+  for (i=0; i < xlen; i++) {
+    printk ("%x ", xbuf[i]);
+  }
+  printk ("\n");
+
   /* Done just set up the struct  */
   chlg = tcpch_alloc_challenge (ts, len, nz, diff);
   if (! IS_ERR(chlg))
@@ -459,12 +464,12 @@ out:
 
 /* challenge generation from a specific packet */
 struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
-    u16 len, u16 nz, u16 diff)
+    u8 len, u8 nz, u8 diff)
 {
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
   /* const struct net *net = sock_net (sk); */
-  u64 ts = skb->skb_mstamp;
+  u32 ts = skb->skb_mstamp;
 
   return __generate_challenge (iph, th, ts, 
       len, nz, diff);
@@ -481,9 +486,9 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   int ret, err;
   u16 i;
-  u16 xlen;
+  u8 xlen;
   int dsize;
-  long ts;
+  u32 ts;
 
   __be32 saddr, daddr;
   __be16 sport, dport;
@@ -501,7 +506,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   /* always make sure key is generated */
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
 
-  ts = (stamp->tv_sec*1000000L) + stamp->tv_usec;
+  ts = sol->ts;
 
   /* need to build x first */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
@@ -533,7 +538,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
-  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u64));
+  err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   dsize = crypto_shash_digestsize (alg);
   digest = (u8 *) kmalloc (dsize, GFP_KERNEL);
@@ -636,10 +641,10 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
       return 0;
 
   /* calculate how much space do we need in bytes */
-  need = (8 /* for timestamp */ +
-            2 /* for nz */ +
-            2 /* for diff */ +
-            2 /* for len */ +
+  need = (4 /* for timestamp */ +
+            1 /* for nz */ +
+            1 /* for diff */ +
+            1 /* for len */ +
             chlg->len/16 /* length of preimage */);
 
   /* align to 32 bits */
@@ -656,7 +661,7 @@ u32 tcpch_get_solution_length (struct tcpch_solution *sol)
       return 0;
 
   /* calculate how much space do we need in bytes */
-  need = 8 /* for timestamp */ + sol->nz * (sol->len / 16);
+  need = 4 /* for timestamp */ + sol->nz * (sol->len / 16);
 
   /* align to 32 bits */
   need = (need + 3) & ~3U;

@@ -47,7 +47,7 @@ static int ip_ping_group_range_max[] = { GID_T_MAX, GID_T_MAX };
 
 #ifdef CONFIG_SYN_CHALLENGE
 static int tcp_challenge_min_nz = 1;
-static int tcp_challenge_max_nz = (1 << 16);
+static int tcp_challenge_max_nz = (1 << 8);
 static int tcp_challenge_min_diff = 1;
 static int tcp_challenge_max_diff = 32;
 #endif

@@ -93,6 +93,10 @@ static int tcp_v4_md5_hash_hdr(char *md5_hash, const struct tcp_md5sig_key *key,
 			       __be32 daddr, __be32 saddr, const struct tcphdr *th);
 #endif
 
+#ifdef CONFIG_SYN_CHALLENGE
+struct sock *challenge_v4_check (struct sock *sk, struct sk_buff *skb);
+#endif
+
 struct inet_hashinfo tcp_hashinfo;
 EXPORT_SYMBOL(tcp_hashinfo);
 
@@ -1426,13 +1430,18 @@ EXPORT_SYMBOL(tcp_v4_syn_recv_sock);
 
 static struct sock *tcp_v4_cookie_check(struct sock *sk, struct sk_buff *skb)
 {
-#ifdef CONFIG_SYN_COOKIES
 	const struct tcphdr *th = tcp_hdr(skb);
-
+#ifdef CONFIG_SYN_CHALLENGE
+  if (!th->syn) {
+    sk = challenge_v4_check (sk, skb);
+    goto out;
+  }
+#elif defined CONFIG_SYN_COOKIES
 	if (!th->syn)
 		sk = cookie_v4_check(sk, skb);
 #endif
-	return sk;
+out:
+  return sk;
 }
 
 /* The socket must have it's spinlock held when we get

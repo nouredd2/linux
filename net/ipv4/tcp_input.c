@@ -75,6 +75,8 @@
 #include <linux/ipsec.h>
 #include <asm/unaligned.h>
 #include <linux/errqueue.h>
+#include <net/secure_seq.h>
+
 
 int sysctl_tcp_fack __read_mostly;
 int sysctl_tcp_max_reordering __read_mostly = 300;
@@ -3727,34 +3729,31 @@ static inline void tcp_parse_challenge (int len, const unsigned char *pktopt,
 {
   struct tcpch_challenge *chlg;
   const unsigned char *ptr = pktopt;
-  u64 ts;
-  u16 nz;
-  u16 diff;
-  u16 clen;
+  u32 ts;
+  u8 nz;
+  u8 diff;
+  u8 clen;
 
   /* this should be zero but just to make sure. If there was something there
    * we shouldn't have been here!*/
-  opt_rx = 0;
+  opt_rx->chlg = 0;
 
   /* we need at least: 8 bytes for ts, 2 for nz, 2 for diff,
    * 2 for len and then we have the preimage which 256 bits 
    * or 32 bytes
    */
-  if (len < 2 + 8 + 2 + 2 + 2 + 32)
+  if (len < 2 + 4 + 1 + 1 + 1)
     {
       pr_debug ("[tcpch:] Incorrect value for option length in tcp challenge\n");
       return;
     }
 
   /* get the small stuff first */
-  ts = get_unaligned_be64 (ptr);
-  ptr += 8;
-  nz = get_unaligned_be16 (ptr);
-  ptr += 2;
-  diff = get_unaligned_be16 (ptr);
-  ptr += 2;
-  clen = get_unaligned_be16 (ptr);
-  ptr += 2;
+  ts = get_unaligned_be32 (ptr);
+  ptr += 4;
+  nz = *ptr++;
+  diff = *ptr++;
+  clen = *ptr++;
 
   /* create the challenge */
   chlg = tcpch_alloc_challenge (ts, clen, nz, diff);
@@ -3762,7 +3761,7 @@ static inline void tcp_parse_challenge (int len, const unsigned char *pktopt,
       return;
 
   /* allocate the challenge buffer */
-  chlg->cbuf = kmalloc (32, GFP_KERNEL);
+  chlg->cbuf = kmalloc (clen/16, GFP_KERNEL);
   if (IS_ERR(chlg))
     {
       tcpch_free_challenge_safe (chlg); 
@@ -3770,7 +3769,7 @@ static inline void tcp_parse_challenge (int len, const unsigned char *pktopt,
     }
 
   /* copy the preimage  */
-  memcpy (chlg->cbuf, ptr, 32);
+  memcpy (chlg->cbuf, ptr, clen/16);
 
   /* done parsing, set the received option and exit */
   opt_rx->chlg = chlg;
@@ -3782,23 +3781,23 @@ static inline void tcp_parse_solution (const struct net *net,
 {
   struct tcpch_solution *sol, *head;
   const unsigned char *ptr = pktopt;
-  u64 ts;
-  u16 len_of_subc = net->ipv4.sysctl_tcp_challenge_len / 16;
-  u16 i;
+  u32 ts;
+  u8 len_of_subc = net->ipv4.sysctl_tcp_challenge_len / 16;
+  u8 i;
 
   /* make sure the solution pointer is 0 */
   opt_rx->sol = 0;
 
   /* make sure first that we have all parameters */
-  if (len < 2 + 8 + (net->ipv4.sysctl_tcp_challenge_nz * len_of_subc))
+  if (len < 2 + 4 + (net->ipv4.sysctl_tcp_challenge_nz * len_of_subc))
     {
       pr_debug ("[tcpch:] Incorrect value for option length in tcp solution\n");
       return;
     }
 
   /* get the parameters */
-  ts = get_unaligned_be64 (ptr);
-  ptr += 8;
+  ts = get_unaligned_be32 (ptr);
+  ptr += 4;
 
 
   /* now read each sub-challenge solution and parse it */
@@ -6591,3 +6590,143 @@ drop:
 	return 0;
 }
 EXPORT_SYMBOL(tcp_conn_request);
+
+struct sock *challenge_v4_check (struct sock *sk,
+        struct sk_buff *skb)
+{
+  /*
+   * This code mimics the cookie_v4_check routine in syncookies.c
+   */
+  struct ip_options *opt = &TCP_SKB_CB(skb)->header.h4.opt;
+  struct tcp_options_received tcp_opt;
+  struct inet_request_sock *ireq;
+  struct tcp_request_sock *treq;
+  struct tcp_sock *tp = tcp_sk(sk);
+  const struct tcphdr *th = tcp_hdr(skb);
+  struct sock *ret = sk;
+  struct request_sock *req;
+  int mss = 0;
+  struct rtable *rt;
+  __u8 rcv_wscale;
+  struct flowi4 fl4;
+
+  if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
+    goto out;
+
+  /* parse the options from the packet */
+  memset (&tcp_opt, 0, sizeof (tcp_opt));
+  tcp_parse_options(sock_net(sk), skb, &tcp_opt, 0, NULL);
+
+  if (tcp_opt.user_mss)
+    mss = tcp_opt.user_mss;
+
+  if (! tcp_opt.sol)
+    {
+      __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
+      goto out;
+    }
+
+  if (! tcpch_verify_solution (sk, skb, tcp_opt.sol))
+    {
+      __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
+      goto out;
+    }
+
+  __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
+
+  /*
+  if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
+    tsoff = secure_tcp_ts_off(sock_net(sk),
+        ip_hdr(skb)->daddr,
+        ip_hdr(skb)->saddr);
+    tcp_opt.rcv_tsecr -= tsoff;
+  }
+  */
+
+  ret = NULL;
+  req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
+  if (!req)
+    goto out;
+
+  ireq = inet_rsk(req);
+  treq = tcp_rsk(req);
+	treq->ts_off = 0;
+  treq->rcv_isn = ntohl(th->seq) - 1;
+  treq->snt_isn = ntohl(th->ack_seq) - 1;
+  treq->ts_off = 0;
+  treq->txhash = net_tx_rndhash();
+  req->mss = mss;
+  ireq->ir_num = ntohs(th->dest);
+  ireq->ir_rmt_port = th->source;
+  sk_rcv_saddr_set (req_to_sk(req), ip_hdr(skb)->daddr);
+  sk_daddr_set (req_to_sk(req), ip_hdr(skb)->saddr);
+  ireq->ir_mark = inet_request_mark(sk, skb);
+  ireq->snd_wscale = tcp_opt.snd_wscale;
+  ireq->sack_ok = tcp_opt.sack_ok;
+  ireq->wscale_ok = tcp_opt.wscale_ok;
+  ireq->tstamp_ok = tcp_opt.saw_tstamp;
+  req->ts_recent = tcp_opt.saw_tstamp ? tcp_opt.rcv_tsval : 0;
+  treq->snt_synack = 0;
+  treq->tfo_listener = false;
+
+  ireq->ir_iif = inet_request_bound_dev_if(sk, skb);
+
+  ireq->opt = tcp_v4_save_options (skb);
+
+  if (security_inet_conn_request(sk, skb, req)) {
+    reqsk_free(req);
+    goto out;
+  }
+
+  req->num_retrans = 0;
+
+  if (tcp_opt.tstamp_ok)
+    {
+      treq->ts_off = secure_tcp_ts_off(sock_net(sk),
+          ip_hdr(skb)->daddr,
+          ip_hdr(skb)->saddr);
+    }
+
+	/*
+	 * We need to lookup the route here to get at the correct
+	 * window size. We should better make sure that the window size
+	 * hasn't changed since we received the original syn, but I see
+	 * no easy way to do this.
+	 */
+	flowi4_init_output(&fl4, ireq->ir_iif, ireq->ir_mark,
+			   RT_CONN_FLAGS(sk), RT_SCOPE_UNIVERSE, IPPROTO_TCP,
+			   inet_sk_flowi_flags(sk),
+			   opt->srr ? opt->faddr : ireq->ir_rmt_addr,
+			   ireq->ir_loc_addr, th->source, th->dest, sk->sk_uid);
+	security_req_classify_flow(req, flowi4_to_flowi(&fl4));
+	rt = ip_route_output_key(sock_net(sk), &fl4);
+	if (IS_ERR(rt)) {
+		reqsk_free(req);
+		goto out;
+	}
+
+	/* Try to redo what tcp_v4_send_synack did. */
+	req->rsk_window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
+
+	tcp_select_initial_window(tcp_full_space(sk), req->mss,
+				  &req->rsk_rcv_wnd, &req->rsk_window_clamp,
+				  ireq->wscale_ok, &rcv_wscale,
+				  dst_metric(&rt->dst, RTAX_INITRWND));
+
+	ireq->rcv_wscale  = rcv_wscale;
+
+  tcp_ecn_create_request (req, skb, sk, &rt->dst);
+	/* ireq->ecn_ok = cookie_ecn_ok(&tcp_opt, sock_net(sk), &rt->dst);*/
+
+  /* use the same syncookies.c routine */
+  ret = tcp_get_cookie_sock(sk, skb, req, &rt->dst, treq->ts_off);
+
+	/* ip_queue_xmit() depends on our flow being setup
+	 * Normal sockets get it right from inet_csk_route_child_sock()
+	 */
+  if (ret)
+    inet_sk(ret)->cork.fl.u.ip4 = fl4;
+out:
+  return ret;
+}
+EXPORT_SYMBOL(challenge_v4_check);

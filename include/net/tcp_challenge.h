@@ -23,7 +23,7 @@
 /* the default size of each new challenge sent */
 #define TCPCH_DEFAULT_SIZE 32
 
-#define TCPCH_DEFAULT_LEN 32
+#define TCPCH_DEFAULT_LEN 64
 #define TCPCH_DEFAULT_NZ 5
 #define TCPCH_DEFAULT_NDIFF 20
 
@@ -34,10 +34,10 @@
 struct tcpch_challenge {
     u8            *cbuf;      /* the actual challenge to send to the client */
 
-    u64           ts;         /* the timestamp of the current challenge     */
-    u16           len;        /* the length of (x+z) in the puzzle          */
-    u16           nz;         /* the number of subpuzzles                   */
-    u16           ndiff;      /* the number of bits of difficulty           */
+    u32          ts;         /* the timestamp of the current challenge     */
+    u8           len;        /* the length of (x+z) in the puzzle          */
+    u8           nz;         /* the number of subpuzzles                   */
+    u8           ndiff;      /* the number of bits of difficulty           */
 };
 
 /* This is the basic structure that will contain each solution to a subpuzzle.
@@ -45,11 +45,11 @@ struct tcpch_challenge {
  * challenge
  */
 struct tcpch_solution {
-    u64             ts;         /* the timestamp used for the subpuzzle */
-    u16             nz;         /* the number of subpuzzles             */
-    u16             diff;       /* the number of diffuclty bits         */
-    u16             len;        /* the length of (x+z) in the puzzles   */
-    u8              *sbuf;      /* the current solution                 */
+    u32            ts;         /* the timestamp used for the subpuzzle */
+    u8             nz;         /* the number of subpuzzles             */
+    u8             diff;       /* the number of diffuclty bits         */
+    u8             len;        /* the length of (x+z) in the puzzles   */
+    u8             *sbuf;      /* the current solution                 */
 
     struct list_head  list;     /* the list of sub-solutions contained  */
 };
@@ -65,8 +65,8 @@ struct tcpch_solution {
  * and WILL NOT allocate memory of the buffer to hold the challenge, this
  * should be done separately.
  */
-struct tcpch_challenge *tcpch_alloc_challenge(u64 mts, u16 mlen,
-    u16 mnz, u16 mndiff);
+struct tcpch_challenge *tcpch_alloc_challenge(u32 mts, u8 mlen,
+    u8 mnz, u8 mndiff);
 
 /**
  * tcpch_alloc_solution - allocate memory for a challenge solution
@@ -80,7 +80,7 @@ struct tcpch_challenge *tcpch_alloc_challenge(u64 mts, u16 mlen,
  * data to 0 and WILL NOT allocate memory to hold the solution. This contains
  * a list head to point to the next sub challenge solution.
  */
-struct tcpch_solution *tcpch_alloc_solution (u64 mts, u16 diff, u16 mnz, u16 mlen);
+struct tcpch_solution *tcpch_alloc_solution (u32 mts, u8 diff, u8 mnz, u8 mlen);
 
 /**
  * tcpch_free_challenge() - Free the space occupied by a challenge
@@ -121,7 +121,7 @@ void tcpch_free_solution (struct tcpch_solution *sol);
  * @return the built challenge structure
  */
 struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
-    u16 len, u16 nz, u16 diff);
+    u8 len, u8 nz, u8 diff);
 
 /*
  * tcpch_verify_solution () - Verify a given solution of a certain challenge
@@ -163,6 +163,17 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg);
  * @return the solution's length in bytes aligned to 32 bits
  */
 u32 tcpch_get_solution_length (struct tcpch_solution *sol);
+
+/*
+ * challenge_v4_check () - Check for a challenge solution and verify it.
+ *
+ * @sk:     The calling socket
+ * @skb:    The received packet
+ *
+ * @return a new child socket if everything goes well
+ */
+struct sock *challenge_v4_check (struct sock *sk,
+        struct sk_buff *skb);
 
 
 #endif /* TCP_CHALLENGE_H */
