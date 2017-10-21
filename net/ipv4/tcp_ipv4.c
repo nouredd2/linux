@@ -1915,6 +1915,10 @@ static int tcp_v4_init_sock(struct sock *sk)
 	tcp_sk(sk)->af_specific = &tcp_sock_ipv4_specific;
 #endif
 
+#ifdef CONFIG_SYN_CHALLENGE
+  tcp_sk(sk)->sol = 0;
+#endif
+
 	return 0;
 }
 
@@ -1936,6 +1940,12 @@ void tcp_v4_destroy_sock(struct sock *sk)
 
 	/* Cleans up our, hopefully empty, out_of_order_queue. */
 	skb_rbtree_purge(&tp->out_of_order_queue);
+
+  /* clean up syn challenges and solutions if any */
+#ifdef CONFIG_SYN_CHALLENGE
+  if (tp->sol)
+      tcpch_free_solution (tp->sol);
+#endif
 
 #ifdef CONFIG_TCP_MD5SIG
 	/* Clean up the MD5 key list, if any */

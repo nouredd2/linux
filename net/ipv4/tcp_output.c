@@ -524,7 +524,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
           *p8 = TCPOPT_NOP;
           *(++p8) = TCPOPT_NOP;
         }
-      /* i added these for safety */
+      /*
       else if ((syn_challenge_opt_len & 3) == 1)
         {
           *p8 = TCPOPT_NOP;
@@ -535,6 +535,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
         {
           *p8 = TCPOPT_NOP;
         }
+      */
 
       /* done advance the main pointer */
       ptr += (syn_challenge_opt_len + 3)>> 2; 
@@ -577,7 +578,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
           *p8 = TCPOPT_NOP;
           *(++p8) = TCPOPT_NOP;
         }
-      /* i added these for safety */
+      /*
       else if ((syn_challenge_opt_len & 3) == 1)
         {
           *p8 = TCPOPT_NOP;
@@ -588,6 +589,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
         {
           *p8 = TCPOPT_NOP;
         }
+      */
 
       /* done, advance the pointers */
       ptr += (syn_challenge_opt_len + 3) >> 2;
@@ -668,6 +670,79 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 		}
 		ptr += (len + 3) >> 2;
 	}
+}
+
+/* Compute TCP options for ACK packet when sending out a tcp solution
+ * in response to a challenge
+ */
+static unsigned int tcp_ack_solution_options(struct sock *sk, 
+        struct sk_buff *skb, 
+        struct tcp_out_options *opts,
+        struct tcp_md5sig_key **md5)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	unsigned int remaining = MAX_TCP_OPTION_SPACE;
+	struct tcp_fastopen_request *fastopen = tp->fastopen_req;
+
+  /* We are always resending the same stuff that we did when sending the 
+   * SYN packet because those things were not saved!
+   */
+
+#ifdef CONFIG_TCP_MD5SIG
+	*md5 = tp->af_specific->md5_lookup(sk, sk);
+	if (*md5) {
+		opts->options |= OPTION_MD5;
+		remaining -= TCPOLEN_MD5SIG_ALIGNED;
+	}
+#else
+	*md5 = NULL;
+#endif
+
+	opts->mss = tcp_advertise_mss(sk);
+	remaining -= TCPOLEN_MSS_ALIGNED;
+
+  /* first check for the solution and make sure we set it out */
+  if (likely(tp->sol))
+    {
+      opts->options |= OPTION_SYN_SOLUTION;
+      opts->sol = tp->sol;
+      opts->ctype = SYN_SOLUTION;
+      remaining -= tcpch_get_solution_length (tp->sol);
+    }
+
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps && !*md5)) {
+		opts->options |= OPTION_TS;
+		opts->tsval = tcp_skb_timestamp(skb) + tp->tsoffset;
+		opts->tsecr = tp->rx_opt.ts_recent;
+		remaining -= TCPOLEN_TSTAMP_ALIGNED;
+	}
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling)) {
+		opts->ws = tp->rx_opt.rcv_wscale;
+		opts->options |= OPTION_WSCALE;
+		remaining -= TCPOLEN_WSCALE_ALIGNED;
+	}
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
+		opts->options |= OPTION_SACK_ADVERTISE;
+		if (unlikely(!(OPTION_TS & opts->options)))
+			remaining -= TCPOLEN_SACKPERM_ALIGNED;
+	}
+
+	if (fastopen && fastopen->cookie.len >= 0) {
+		u32 need = fastopen->cookie.len;
+
+		need += fastopen->cookie.exp ? TCPOLEN_EXP_FASTOPEN_BASE :
+					       TCPOLEN_FASTOPEN_BASE;
+		need = (need + 3) & ~3U;  /* Align to 32 bits */
+		if (remaining >= need) {
+			opts->options |= OPTION_FAST_OPEN_COOKIE;
+			opts->fastopen_cookie = &fastopen->cookie;
+			remaining -= need;
+			tp->syn_fastopen = 1;
+			tp->syn_fastopen_exp = fastopen->cookie.exp ? 1 : 0;
+		}
+	}
+
+	return MAX_TCP_OPTION_SPACE - remaining;
 }
 
 /* Compute TCP options for SYN packets. This is not the final
@@ -791,8 +866,6 @@ static unsigned int tcp_synack_options(const struct sock *sk,
     opts->ctype = SYN_CHALLENGE;
     /* tcpch_get_length returns length aligned to 32 bits */
     remaining -= tcpch_get_length (chlg);
-    pr_debug ("Need %d bytes for challange in options."
-                "What remains is %d\n", tcpch_get_length(chlg), remaining);
   }
 #endif
 
@@ -1181,6 +1254,12 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	if (unlikely(tcb->tcp_flags & TCPHDR_SYN))
 		tcp_options_size = tcp_syn_options(sk, skb, &opts, &md5);
 	else
+#ifdef CONFIG_SYN_CHALLENGE
+  if (unlikely(tp->sol))
+    tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
+                 &md5);
+  else
+#endif
 		tcp_options_size = tcp_established_options(sk, skb, &opts,
 							   &md5);
 	tcp_header_size = tcp_options_size + sizeof(struct tcphdr);

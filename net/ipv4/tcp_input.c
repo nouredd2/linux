@@ -5792,6 +5792,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 	struct tcp_fastopen_cookie foc = { .len = -1 };
 	int saved_clamp = tp->rx_opt.mss_clamp;
 	bool fastopen_fail;
+  struct tcpch_solution *sol = 0;
 
 	tcp_parse_options(sock_net(sk), skb, &tp->rx_opt, 0, &foc);
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
@@ -5852,6 +5853,25 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 
 		tcp_init_wl(tp, TCP_SKB_CB(skb)->seq);
 		tcp_ack(sk, skb, FLAG_SLOWPATH);
+
+    /* check if there is a challenge in the packet:
+     * if so then solve the challenge if supported 
+     * and piggyback it on the ACK packet
+     */
+#ifdef CONFIG_SYN_CHALLENGE
+    if (tp->rx_opt.chlg)
+      {
+        pr_info ("SYNACK packet contains a challenge!\n");
+        sol = tcpch_solve_challenge (skb, tp->rx_opt.chlg);
+        pr_info ("Produced solution for SYNACK challenge!\n");
+
+        /* now check if the socket already hols a solution and clear it
+         */
+        if (tp->sol)
+            tcpch_free_solution (tp->sol);
+        tp->sol = sol;
+      }
+#endif
 
 		/* Ok.. it's good. Set up sequence numbers and
 		 * move to established.

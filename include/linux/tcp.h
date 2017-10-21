@@ -141,6 +141,8 @@ static inline void tcp_clear_options(struct tcp_options_received *rx_opt)
     {
       tcpch_free_solution (rx_opt->sol);
     }
+  rx_opt->chlg = 0;
+  rx_opt->ctype = SYN_NONE;
 #endif
 }
 
@@ -400,6 +402,10 @@ struct tcp_sock {
 
 /* TCP MD5 Signature Option information */
 	struct tcp_md5sig_info	__rcu *md5sig_info;
+#endif
+
+#ifdef CONFIG_SYN_CHALLENGE
+  struct tcpch_solution  *sol;
 #endif
 
 /* TCP fastopen related information */
