@@ -1256,8 +1256,13 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	else
 #ifdef CONFIG_SYN_CHALLENGE
   if (unlikely(tp->sol))
-    tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
-                 &md5);
+    {
+      tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
+          &md5);
+      /* clear tp->sol so that we don't do this everytime we send an ack */
+      tcpch_free_solution (tp->sol);
+      tp->sol = 0;
+    }
   else
 #endif
 		tcp_options_size = tcp_established_options(sk, skb, &opts,
