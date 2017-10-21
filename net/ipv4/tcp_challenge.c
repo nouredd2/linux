@@ -42,7 +42,7 @@ struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u8 mlen,
 
   if (IS_ERR(chlg))
     {
-      printk ("Cannot allocate memory for TCP/IP challenge\n");
+      pr_info ("Cannot allocate memory for TCP/IP challenge\n");
     }
   else
     {
@@ -68,7 +68,7 @@ struct tcpch_solution *tcpch_alloc_solution (u32 mts, u8 diff, u8 mnz, u8 mlen)
 
   if (IS_ERR(solution))
     {
-      printk ("Cannot allocate memory for TCP/IP solution\n");
+      pr_info ("Cannot allocate memory for TCP/IP solution\n");
     }
   else 
     {
@@ -257,7 +257,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
 
   if (IS_ERR(alg))
     {
-      printk ("Failed to create hash algo!\n");
+      pr_debug ("Failed to create hash algo!\n");
       return ERR_PTR (-ENOMEM); /* double check error code */
     }
 
@@ -392,7 +392,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   if (IS_ERR(alg)) 
     {
-      printk ("Failed to create hash algo!\n");
+      pr_debug ("Failed to create hash algo!\n");
       return ERR_PTR (-ENOMEM); /* double check error code */
     }
 
@@ -442,11 +442,11 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   /* grab the bytes */
   memcpy (xbuf, digest, xlen);
 
-  printk ("Generated the preimage: ");
+  pr_info ("Generated the preimage: ");
   for (i=0; i < xlen; i++) {
-    printk ("%x ", xbuf[i]);
+    pr_info ("%x ", xbuf[i]);
   }
-  printk ("\n");
+  pr_info ("\n");
 
   /* Done just set up the struct  */
   chlg = tcpch_alloc_challenge (ts, len, nz, diff);
