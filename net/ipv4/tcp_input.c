@@ -5861,6 +5861,9 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
     if (tp->rx_opt.chlg)
       {
         pr_info ("SYNACK packet contains a challenge!\n");
+        pr_info ("chlg->nz = %d\n", chlg->nz);
+        pr_info ("chlg->ndiff = %d\n", chlg->ndiff);
+        pr_info ("chlg->len = %d\n", chlg->len);
         sol = tcpch_solve_challenge (skb, tp->rx_opt.chlg);
         pr_info ("Produced solution for SYNACK challenge!\n");
 
