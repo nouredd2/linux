@@ -464,6 +464,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 #ifdef CONFIG_SYN_COOKIES
   struct tcpch_challenge *chlg;
   struct tcpch_solution *sol;
+  struct tcpch_solution *head;
   u16 syn_challenge_opt_len;
   u8 *p8;
   u16 *p16;
@@ -566,16 +567,16 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
     }
   else if (OPTION_SYN_SOLUTION & options)
     {
-      sol = opts->sol;
+      head = opts->sol;
       /* calculate the length of the option field
        * 2 for the first two bytes of the option
        * 8 for the timestamp
        * nz * l/16 for the solutions
        */
-      syn_challenge_opt_len = 2 + 4 + (sol->nz * (sol->len/16));
+      syn_challenge_opt_len = 2 + 4 + (head->nz * (head->len/16));
       if (syn_challenge_opt_len > 255)
         {
-          pr_debug ("Length of solution not allowed!\n");
+          pr_info ("Length of solution not allowed!\n");
           return;
         }
 
@@ -586,14 +587,14 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 
       /* throw in the timestamp */
       p32 = (u32 *)p16;
-      *p32++ = htonl (sol->ts);
+      *p32++ = htonl (head->ts);
 
       /* now the solutions */
       p8 = (u8 *)p32;
-      list_for_each_entry (sol, &(sol->list), list)
+      list_for_each_entry (sol, &(head->list), list)
         {
-          memcpy (p8, sol->sbuf, (sol->len/16));
-          p8 += (sol->len/16);
+          memcpy (p8, sol->sbuf, (head->len/16));
+          p8 += (head->len/16);
         }
 
       /* how to do the alignment */
@@ -1278,13 +1279,14 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
     tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
                 &md5);
     tp->saw_challenge = 0;
+
+    pr_info ("tcp_options_size is %d\n", tcp_options_size);
   }
   else
 #endif
 		tcp_options_size = tcp_established_options(sk, skb, &opts,
 							   &md5);
 	tcp_header_size = tcp_options_size + sizeof(struct tcphdr);
-  pr_info ("tcp_options_size is %d\n", tcp_options_size);
 
 	/* if no packet is in qdisc/device queue, then allow XPS to select
 	 * another queue. We can be called from tcp_tsq_handler()
@@ -1336,7 +1338,9 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 		}
 	}
 
+  pr_info ("Writing options now\n");
 	tcp_options_write((__be32 *)(th + 1), tp, &opts);
+  pr_info ("Done writing options\n");
 	skb_shinfo(skb)->gso_type = sk->sk_gso_type;
 	if (likely(!(tcb->tcp_flags & TCPHDR_SYN))) {
 		th->window      = htons(tcp_select_window(sk));
