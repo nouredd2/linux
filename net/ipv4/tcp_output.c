@@ -691,6 +691,7 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int remaining = MAX_TCP_OPTION_SPACE;
 	struct tcp_fastopen_request *fastopen = tp->fastopen_req;
+  u32 blen;
 
   /* We are always resending the same stuff that we did when sending the 
    * SYN packet because those things were not saved!
@@ -715,7 +716,15 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
       opts->options |= OPTION_SYN_SOLUTION;
       opts->sol = tp->sol;
       opts->ctype = SYN_SOLUTION;
-      remaining -= tcpch_get_solution_length (tp->sol);
+      pr_info ("Information about the produced solution:\n");
+      pr_info ("sol->nz = %d\n", tp->sol->nz);
+      pr_info ("sol->len = %d\n", tp->sol->len);
+      pr_info ("sol->diff = %d\n", tp->sol->diff);
+      pr_info ("Now calling tcpch_get_solution_length\n");
+      blen = tcpch_get_solution_length (tp->sol);
+      pr_info ("Obtained blen = %d\n", blen);
+      remaining -= blen;
+      pr_info ("Returned from tcpch_get_solution_length\n");
     }
 
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps && !*md5)) {
