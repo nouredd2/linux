@@ -333,7 +333,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
         }
       else
         {
-          list_add_tail (&(head->list), &(sol->list));
+          list_add_tail (&(sol->list), &(head->list));
         }
     }
 
