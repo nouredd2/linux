@@ -652,6 +652,9 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
   else
       need = (1 + 1 + 1 + chlg->len/16);
 
+  /* add the option bytes */
+  need += 2;
+
   /* align to 32 bits */
   need = (need + 3) & ~3U;
 
@@ -667,6 +670,9 @@ u32 tcpch_get_solution_length (struct tcpch_solution *sol)
 
   /* calculate how much space do we need in bytes */
   need = 4 /* for timestamp */ + sol->nz * (sol->len / 16);
+
+  /* add the option bytes */
+  need += 2;
 
   /* align to 32 bits */
   need = (need + 3) & ~3U;
