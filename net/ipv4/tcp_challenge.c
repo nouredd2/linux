@@ -163,25 +163,25 @@ static int __tcpch_get_random_bytes (u8 *buf, int len)
 
   if (!buf || !len)
     {
-      pr_debug ("No output buffer provided!\n");
+      pr_info ("No output buffer provided!\n");
       return -EINVAL;
     }
 
   rng = crypto_alloc_rng (drbg, 0, 0);
   if (IS_ERR(rng))
     {
-      pr_debug ("could not allocate RNG handle for %s\n", drbg);
+      pr_info ("could not allocate RNG handle for %s\n", drbg);
       return -PTR_ERR(rng);
     }
 
   ret = crypto_rng_get_bytes (rng, buf, len);
   if (ret < 0)
     {
-      pr_debug ("tcpch: generation of random bytes failed\n");
+      pr_info ("tcpch: generation of random bytes failed\n");
     }
   else if (ret == 0)
     {
-      pr_debug ("tcpch: RNG returned no data\n");
+      pr_info ("tcpch: RNG returned no data\n");
     }
 
   crypto_free_rng (rng);
@@ -258,7 +258,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
 
   if (IS_ERR(alg))
     {
-      pr_debug ("Failed to create hash algo!\n");
+      pr_info ("Failed to create hash algo!\n");
       return ERR_PTR (-ENOMEM); /* double check error code */
     }
 
@@ -292,6 +292,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
     }
 
   sol = head = 0;
+  pr_info ("Starting the solution procedure!\n");
   for (i=0; i < chlg->nz; ++i)
     {
       found = 0;
@@ -299,7 +300,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
           err = crypto_shash_init (sdesc);
           if (err < 0)
             {
-              pr_debug ("tcpch: Failed toe init hash function!\n");
+              pr_info ("tcpch: Failed toe init hash function!\n");
               head = ERR_PTR(err);
               goto out;
             }
@@ -309,7 +310,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
           err = __tcpch_get_random_bytes (zbuf, xlen);
           if (err <= 0)
             {
-              pr_debug ("tcpch: Failed to generate random bytes!\n");
+              pr_info ("tcpch: Failed to generate random bytes!\n");
               head = ERR_PTR(err);
               goto out;
             }
@@ -321,6 +322,8 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
           /* check the bits */
           found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
       } while (found == 0);
+
+      pr_info ("found a solution to the %d'ts challenge\n", i);
 
       /* allocate a solution struct and add it the list */
       sol = tcpch_alloc_solution (ts, chlg->ndiff, chlg->nz, chlg->len);
@@ -335,6 +338,7 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
         {
           list_add_tail (&(sol->list), &(head->list));
         }
+      pr_info ("inserted solution, moving on to the next!\n");
     }
 
   kfree (trial);
@@ -393,7 +397,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   if (IS_ERR(alg)) 
     {
-      pr_debug ("Failed to create hash algo!\n");
+      pr_info ("Failed to create hash algo!\n");
       return ERR_PTR (-ENOMEM); /* double check error code */
     }
 
@@ -501,7 +505,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   if (!sol || !iph || !th)
     {
-      pr_debug ("[tcp_ch:] Invalid input to verify_solution\n");
+      pr_info ("[tcp_ch:] Invalid input to verify_solution\n");
       return -EINVAL;
     }
 
@@ -516,14 +520,14 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   if (IS_ERR(alg))
     {
-      pr_debug ("[tcp_ch:] Failed to create sha256 algorithm\n");
+      pr_info ("[tcp_ch:] Failed to create sha256 algorithm\n");
       return -PTR_ERR(alg);
     }
 
   sdesc = __init_sdesc_from_alg (alg);
   if (IS_ERR(sdesc))
     {
-      pr_debug ("tcp_ch:] Failed to create shash descriptor\n");
+      pr_info ("tcp_ch:] Failed to create shash descriptor\n");
       crypto_free_shash (alg);
       return -PTR_ERR(sdesc);
     }
@@ -546,7 +550,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   digest = (u8 *) kmalloc (dsize, GFP_KERNEL);
   if (IS_ERR(digest))
     {
-      pr_debug ("[tcp_ch:] Failed to allocate space\n");
+      pr_info ("[tcp_ch:] Failed to allocate space\n");
       ret = -ENOMEM;
       goto out;
     }
@@ -556,7 +560,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   xbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
   if (IS_ERR(xbuf))
     {
-      pr_debug ("[tcp_ch:] Failed to allocate memory\n");
+      pr_info ("[tcp_ch:] Failed to allocate memory\n");
       ret = -ENOMEM;
       goto out_free_digest;
     }
@@ -569,7 +573,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
       err = crypto_shash_init (sdesc);
       if (err < 0)
         {
-          pr_debug ("[tcp_ch:] Failed to initialize sha256\n");
+          pr_info ("[tcp_ch:] Failed to initialize sha256\n");
           goto out_free_all; 
         }
 
@@ -600,7 +604,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   /* sanity check: remove after testing */
   if (ret != 0)
     {
-      pr_debug ("[tcpch:] Something weird is happening in verify solution!\n");
+      pr_info ("[tcpch:] Something weird is happening in verify solution!\n");
       goto out_free_all;
     }
 
