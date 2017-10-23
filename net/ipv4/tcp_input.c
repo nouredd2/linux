@@ -3738,19 +3738,18 @@ static inline void tcp_parse_challenge (int len, const unsigned char *pktopt,
    * we shouldn't have been here!*/
   opt_rx->chlg = 0;
 
-  /* we need at least: 8 bytes for ts, 2 for nz, 2 for diff,
+  /* we need at least: 4 bytes for ts, 2 for nz, 2 for diff,
    * 2 for len and then we have the preimage which 256 bits 
    * or 32 bytes
    */
-  if (len < 2 + 4 + 1 + 1 + 1)
-    {
-      pr_debug ("[tcpch:] Incorrect value for option length in tcp challenge\n");
-      return;
-    }
 
   /* get the small stuff first */
-  ts = get_unaligned_be32 (ptr);
-  ptr += 4;
+  if (opt_rx->saw_tstamp)
+      ts = opt_rx->rcv_tsval;
+  else {
+      ts = get_unaligned_be32 (ptr);
+      ptr += 4;
+  }
   nz = *ptr++;
   diff = *ptr++;
   clen = *ptr++;

@@ -38,6 +38,8 @@ struct tcpch_challenge {
     u8           len;        /* the length of (x+z) in the puzzle          */
     u8           nz;         /* the number of subpuzzles                   */
     u8           ndiff;      /* the number of bits of difficulty           */
+    bool         opt_ts;     /* flag to check wether to use the timestamp
+                                from the options field in the header       */
 };
 
 /* This is the basic structure that will contain each solution to a subpuzzle.
@@ -117,11 +119,12 @@ void tcpch_free_solution (struct tcpch_solution *sol);
  * @len:  the length of the challenge in bits
  * @nz:   the number of sub puzzles
  * @diff: the puzzle difficulty in bits
+ * @ts:   the timestamp to be used for generating challenges
  *
  * @return the built challenge structure
  */
 struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
-    u8 len, u8 nz, u8 diff);
+    u8 len, u8 nz, u8 diff, u32 ts);
 
 /*
  * tcpch_verify_solution () - Verify a given solution of a certain challenge

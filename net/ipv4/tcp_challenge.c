@@ -50,6 +50,7 @@ struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u8 mlen,
       chlg->len   = mlen;
       chlg->nz    = mnz;
       chlg->ndiff = mndiff; 
+      chlg->opt_ts = false;
 
       /* set the data to 0 */
       chlg->cbuf = 0;
@@ -464,12 +465,13 @@ out:
 
 /* challenge generation from a specific packet */
 struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
-    u8 len, u8 nz, u8 diff)
+    u8 len, u8 nz, u8 diff, u32 ts)
 {
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
   /* const struct net *net = sock_net (sk); */
-  u32 ts = skb->skb_mstamp;
+  if (ts == 0)
+      ts = skb->skb_mstamp;
 
   return __generate_challenge (iph, th, ts, 
       len, nz, diff);
@@ -641,11 +643,14 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
       return 0;
 
   /* calculate how much space do we need in bytes */
-  need = (4 /* for timestamp */ +
-            1 /* for nz */ +
-            1 /* for diff */ +
-            1 /* for len */ +
-            chlg->len/16 /* length of preimage */);
+  if (! chlg->opt_ts)
+      need = (4 /* for timestamp */ +
+          1 /* for nz */ +
+          1 /* for diff */ +
+          1 /* for len */ +
+          chlg->len/16 /* length of preimage */);
+  else
+      need = (1 + 1 + 1 + chlg->len/16);
 
   /* align to 32 bits */
   need = (need + 3) & ~3U;
