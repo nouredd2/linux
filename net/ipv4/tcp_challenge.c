@@ -657,7 +657,7 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
 
   return need;
 }
-EXPORT_SYMBOL (tcpch_get_length);
+EXPORT_SYMBOL_GPL (tcpch_get_length);
 
 u32 tcpch_get_solution_length (struct tcpch_solution *sol)
 {
@@ -672,4 +672,4 @@ u32 tcpch_get_solution_length (struct tcpch_solution *sol)
   need = (need + 3) & ~3U;
   return need;
 }
-EXPORT_SYMBOL(tcpch_get_solution_length);
+EXPORT_SYMBOL_GPL (tcpch_get_solution_length);

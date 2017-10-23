@@ -1276,6 +1276,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	else
 #ifdef CONFIG_SYN_CHALLENGE
   if (unlikely(tp->sol && tp->saw_challenge)) {
+    pr_info ("Just before entering the tcp_ack_solution_options call!\n");
     tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
                 &md5);
     tp->saw_challenge = 0;
