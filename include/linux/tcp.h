@@ -405,6 +405,7 @@ struct tcp_sock {
 #endif
 
 #ifdef CONFIG_SYN_CHALLENGE
+  int saw_challenge;
   struct tcpch_solution  *sol;
 #endif
 

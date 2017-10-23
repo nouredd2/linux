@@ -5865,11 +5865,12 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
         sol = tcpch_solve_challenge (skb, tp->rx_opt.chlg);
         pr_info ("Produced solution for SYNACK challenge!\n");
 
-        /* now check if the socket already hols a solution and clear it
+        /* now check if the socket already holds a solution and clear it
          */
         if (tp->sol)
             tcpch_free_solution (tp->sol);
         tp->sol = sol;
+        tp->saw_challenge = 1;
       }
 #endif
 
