@@ -874,11 +874,13 @@ static unsigned int tcp_synack_options(const struct sock *sk,
     if (likely(ireq->tstamp_ok))
         ch_ts = tcp_skb_timestamp(skb) + tcp_rsk(req)->ts_off;
 
+    pr_info ("trying to generate a new challenge\n");
     chlg = tcpch_generate_challenge (skb, net->ipv4.sysctl_tcp_challenge_len,
             net->ipv4.sysctl_tcp_challenge_nz,
             net->ipv4.sysctl_tcp_challenge_diff,
             ch_ts);
     chlg->opt_ts = ireq->tstamp_ok;
+    pr_info ("Generated new challenge!\n");
 
     if ( unlikely (IS_ERR(chlg)) ) {
       pr_debug ("Failed to initialize challenge.\n");
