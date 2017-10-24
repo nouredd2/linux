@@ -31,6 +31,8 @@
  */
 static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
 
+extern void get_random_bytes (void *buf, int nbytes);
+
 /* tcpch_alloc_challenge */
 struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u8 mlen,
     u8 mnz, u8 mndiff)
@@ -157,6 +159,7 @@ struct shash_desc *__init_sdesc_from_alg (struct crypto_shash *alg)
 
 static int __tcpch_get_random_bytes (u8 *buf, int len)
 {
+  /* this is not working for some reason. double check later! */
   struct crypto_rng *rng;
   char *drbg = "drbg_nopr_sha256";
   int ret;
@@ -307,13 +310,8 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
           err = crypto_shash_update (sdesc, xbuf, xlen);
           err = crypto_shash_update (sdesc, (u8 *)&i, sizeof (u16));
 
-          err = __tcpch_get_random_bytes (zbuf, xlen);
-          if (err <= 0)
-            {
-              pr_info ("tcpch: Failed to generate random bytes!\n");
-              head = ERR_PTR(err);
-              goto out;
-            }
+          /* err = __tcpch_get_random_bytes (zbuf, xlen); */
+          get_random_bytes (zbuf, xlen);
           err = crypto_shash_update (sdesc, zbuf, xlen);
 
           /* so now we have built x || i || zi, so hash it and compare */
