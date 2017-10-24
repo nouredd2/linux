@@ -567,6 +567,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
     }
   else if (OPTION_SYN_SOLUTION & options)
     {
+      pr_info ("Writing solution to packet options!\n");
       head = opts->sol;
       /* calculate the length of the option field
        * 2 for the first two bytes of the option
@@ -690,7 +691,6 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int remaining = MAX_TCP_OPTION_SPACE;
-	struct tcp_fastopen_request *fastopen = tp->fastopen_req;
   u32 blen;
 
   /* We are always resending the same stuff that we did when sending the 
@@ -716,47 +716,29 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
       opts->options |= OPTION_SYN_SOLUTION;
       opts->sol = tp->sol;
       opts->ctype = SYN_SOLUTION;
-      pr_info ("Information about the produced solution:\n");
-      pr_info ("sol->nz = %d\n", tp->sol->nz);
-      pr_info ("sol->len = %d\n", tp->sol->len);
-      pr_info ("sol->diff = %d\n", tp->sol->diff);
-      pr_info ("Now calling tcpch_get_solution_length\n");
       blen = tcpch_get_solution_length (tp->sol);
       pr_info ("Obtained blen = %d\n", blen);
       remaining -= blen;
-      pr_info ("Returned from tcpch_get_solution_length\n");
     }
 
-	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps && !*md5)) {
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps && !*md5) &&
+        remaining >= TCPOLEN_TSTAMP_ALIGNED) {
 		opts->options |= OPTION_TS;
 		opts->tsval = tcp_skb_timestamp(skb) + tp->tsoffset;
 		opts->tsecr = tp->rx_opt.ts_recent;
 		remaining -= TCPOLEN_TSTAMP_ALIGNED;
 	}
-	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling)) {
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling) &&
+        remaining >= TCPOLEN_WSCALE_ALIGNED) {
 		opts->ws = tp->rx_opt.rcv_wscale;
 		opts->options |= OPTION_WSCALE;
 		remaining -= TCPOLEN_WSCALE_ALIGNED;
 	}
-	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack) &&
+        remaining >= TCPOLEN_SACKPERM_ALIGNED) {
 		opts->options |= OPTION_SACK_ADVERTISE;
 		if (unlikely(!(OPTION_TS & opts->options)))
 			remaining -= TCPOLEN_SACKPERM_ALIGNED;
-	}
-
-	if (fastopen && fastopen->cookie.len >= 0) {
-		u32 need = fastopen->cookie.len;
-
-		need += fastopen->cookie.exp ? TCPOLEN_EXP_FASTOPEN_BASE :
-					       TCPOLEN_FASTOPEN_BASE;
-		need = (need + 3) & ~3U;  /* Align to 32 bits */
-		if (remaining >= need) {
-			opts->options |= OPTION_FAST_OPEN_COOKIE;
-			opts->fastopen_cookie = &fastopen->cookie;
-			remaining -= need;
-			tp->syn_fastopen = 1;
-			tp->syn_fastopen_exp = fastopen->cookie.exp ? 1 : 0;
-		}
 	}
 
   if (remaining > MAX_TCP_OPTION_SPACE) {
@@ -869,6 +851,18 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 	opts->mss = mss;
 	remaining -= TCPOLEN_MSS_ALIGNED;
 
+	if (likely(ireq->wscale_ok)) {
+		opts->ws = ireq->rcv_wscale;
+		opts->options |= OPTION_WSCALE;
+		remaining -= TCPOLEN_WSCALE_ALIGNED;
+	}
+	if (likely(ireq->tstamp_ok)) {
+		opts->options |= OPTION_TS;
+		opts->tsval = tcp_skb_timestamp(skb) + tcp_rsk(req)->ts_off;
+		opts->tsecr = req->ts_recent;
+		remaining -= TCPOLEN_TSTAMP_ALIGNED;
+	}
+
   /* want_challenge should always take precedence over everything else
    * in the setup */
 #ifdef CONFIG_SYN_COOKIES
@@ -898,18 +892,7 @@ static unsigned int tcp_synack_options(const struct sock *sk,
   }
 #endif
 
-	if (likely(ireq->wscale_ok)) {
-		opts->ws = ireq->rcv_wscale;
-		opts->options |= OPTION_WSCALE;
-		remaining -= TCPOLEN_WSCALE_ALIGNED;
-	}
-	if (likely(ireq->tstamp_ok)) {
-		opts->options |= OPTION_TS;
-		opts->tsval = tcp_skb_timestamp(skb) + tcp_rsk(req)->ts_off;
-		opts->tsecr = req->ts_recent;
-		remaining -= TCPOLEN_TSTAMP_ALIGNED;
-	}
-	if (likely(ireq->sack_ok)) {
+	if (likely(ireq->sack_ok) && remaining >= TCPOLEN_SACKPERM_ALIGNED) {
 		opts->options |= OPTION_SACK_ADVERTISE;
 		if (unlikely(!ireq->tstamp_ok))
 			remaining -= TCPOLEN_SACKPERM_ALIGNED;

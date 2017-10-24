@@ -5861,9 +5861,6 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
     if (tp->rx_opt.chlg)
       {
         pr_info ("SYNACK packet contains a challenge!\n");
-        pr_info ("tp->rx_opt.chlg->nz = %d\n", tp->rx_opt.chlg->nz);
-        pr_info ("tp->rx_opt.chlg->ndiff = %d\n", tp->rx_opt.chlg->ndiff);
-        pr_info ("tp->rx_opt.chlg->len = %d\n", tp->rx_opt.chlg->len);
         sol = tcpch_solve_challenge (skb, tp->rx_opt.chlg);
         if (IS_ERR(sol))
           {
@@ -5871,9 +5868,6 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
             sol = 0;
           }
         pr_info ("Produced solution for SYNACK challenge!\n");
-        pr_info ("sol->nz = %d\n", sol->nz);
-        pr_info ("sol->diff = %d\n", sol->diff);
-        pr_info ("sol->len = %d\n", sol->len);
 
         /* now check if the socket already holds a solution and clear it
          */
@@ -6664,6 +6658,7 @@ struct sock *challenge_v4_check (struct sock *sk,
     }
 
   __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
+  pr_info ("Solution verification succeeded!\n");
 
   /*
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
