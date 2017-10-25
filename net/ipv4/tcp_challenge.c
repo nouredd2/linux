@@ -62,12 +62,12 @@ struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u8 mlen,
 }
 
 /* tcpch_alloc_solution */
-struct tcpch_solution *tcpch_alloc_solution (u32 mts, u8 diff, u8 mnz, u8 mlen)
+struct tcpch_solution_head *tcpch_alloc_solution_head (u32 mts, u8 diff, u8 mnz, u8 mlen)
 {
-  struct tcpch_solution *solution;
+  struct tcpch_solution_head *solution;
 
-  solution = (struct tcpch_solution *)
-                    kmalloc (sizeof (struct tcpch_solution), GFP_KERNEL);
+  solution = (struct tcpch_solution_head *)
+                    kmalloc (sizeof (struct tcpch_solution_head), GFP_KERNEL);
 
   if (IS_ERR(solution))
     {
@@ -79,13 +79,31 @@ struct tcpch_solution *tcpch_alloc_solution (u32 mts, u8 diff, u8 mnz, u8 mlen)
       solution->diff = diff;
       solution->nz = mnz;
       solution->len = mlen;
-      INIT_LIST_HEAD (&(solution->list));
-
-      /* set the data buf to 0 */
-      solution->sbuf = 0;
+      INIT_LIST_HEAD (&(solution->head));
     }
 
   return solution;
+}
+
+/* tcpch_alloc_solution_item */
+struct tcpch_solution_item *tcpch_alloc_solution_item ()
+{
+  struct tcpch_solution_item *item;
+
+  item = (struct tcpch_solution_item *)
+                kmalloc (sizeof (struct tcpch_solution_item), GFP_KERNEL);
+  if (IS_ERR(item))
+    {
+      pr_err ("Cannot allocate memory for TCP/IP solution item\n");
+    }
+  else 
+    {
+      item->sbuf = 0;
+      INIT_LIST_HEAD (&(item->list));
+    }
+
+
+  return item;
 }
 
 /* tcpch_free_challenge */
@@ -115,7 +133,7 @@ void tcpch_free_challenge_safe (struct tcpch_challenge *chlg)
 }
 
 /* free solution helper */
-void _tcpch_free_solution (struct tcpch_solution *sol)
+void _tcpch_free_solution_item (struct tcpch_solution_item *sol)
 {
   if (sol == 0)
     {
@@ -132,18 +150,20 @@ void _tcpch_free_solution (struct tcpch_solution *sol)
 }
 
 /* tcpch_free_solution */
-void tcpch_free_solution (struct tcpch_solution *sol)
+void tcpch_free_solution (struct tcpch_solution_head *head)
 {
-  struct tcpch_solution *itr, *tmp;
+  struct tcpch_solution_item *itr, *tmp;
 
-  list_for_each_entry_safe (itr, tmp, &(sol->list), list)
+  list_for_each_entry_safe (itr, tmp, &(head->head), list)
     {
       /* remove the iterator from the list */
       list_del (&(itr->list));
 
       /* free the subsolution */
-      _tcpch_free_solution (itr);
+      _tcpch_free_solution_item (itr);
     }
+
+  kfree (head);
 }
 
 /* __init_sdesc_from_alg */
@@ -222,11 +242,21 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
   return cmp;
 } /* __tcpch_compare_bits */
 
-struct tcpch_solution *__solve_challenge (struct tcpch_challenge *chlg)
+static inline void __add_solution_item (struct tcpch_solution_head *head,
+    struct tcpch_solution_item *item)
+{
+  if (!head || !item)
+      return;
+
+  list_add_tail (&(item->list), &(head->head));
+}
+
+struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
 {
   struct crypto_shash     *alg;
   struct shash_desc       *sdesc;
-  struct tcpch_solution   *sol, *head;
+  struct tcpch_solution_head *head, *headerr;
+  struct tcpch_solution_item *item;
 
   int err;
   int dsize;
@@ -256,8 +286,7 @@ struct tcpch_solution *__solve_challenge (struct tcpch_challenge *chlg)
 
   if (IS_ERR(sdesc))
     {
-      head = ERR_PTR(-ENOMEM);
-      goto out;
+      return ERR_PTR(-ENOMEM);
     }
 
   /* grab x from the challenge */
@@ -265,8 +294,7 @@ struct tcpch_solution *__solve_challenge (struct tcpch_challenge *chlg)
   if (! xbuf)
     {
       pr_err ("Empty challenge detected. Returning error!\n");
-      head = ERR_PTR(-EINVAL);
-      goto out;
+      return ERR_PTR (-EINVAL);
     }
 
   /* create z buffer to hold trials */
@@ -274,8 +302,7 @@ struct tcpch_solution *__solve_challenge (struct tcpch_challenge *chlg)
   zbuf = (u8 *) kmalloc (xlen, GFP_KERNEL);
   if (IS_ERR(zbuf))
     {
-      head = ERR_PTR (-ENOMEM);
-      goto out;
+      return ERR_PTR (-ENOMEM);
     }
 
   /* allocate some space for the hash */
@@ -283,76 +310,72 @@ struct tcpch_solution *__solve_challenge (struct tcpch_challenge *chlg)
   trial = (u8 *) kmalloc (dsize, GFP_KERNEL);
   if (IS_ERR(trial))
     {
-      head = ERR_PTR(-ENOMEM);
-      goto out;
+      return ERR_PTR(-ENOMEM);
     }
 
-  sol = head = 0;
+  head = tcpch_alloc_solution_head (ts, chlg->ndiff, chlg->nz, chlg->len);
   pr_info ("Starting the solution procedure!\n");
   for (i=0; i < chlg->nz; ++i)
     {
+      item = 0;
       found = 0;
       do {
         pr_info ("Starting new section of solving!\n");
-          err = crypto_shash_init (sdesc);
-          if (err < 0)
-            {
-              pr_err ("tcpch: Failed toe init hash function!\n");
-              head = ERR_PTR(err);
-              goto out;
-            }
-          err = crypto_shash_update (sdesc, xbuf, xlen);
-          err = crypto_shash_update (sdesc, (u8 *)&i, sizeof (u16));
+        err = crypto_shash_init (sdesc);
+        if (err < 0)
+          {
+            pr_err ("tcpch: Failed toe init hash function!\n");
+            headerr = ERR_PTR(err);
+            goto out_err;
+          }
+        err = crypto_shash_update (sdesc, xbuf, xlen);
+        err = crypto_shash_update (sdesc, (u8 *)&i, sizeof (u16));
 
-          /* err = __tcpch_get_random_bytes (zbuf, xlen); */
-          memset(zbuf, 0, xlen);
-          get_random_bytes (zbuf, xlen);
-          err = crypto_shash_update (sdesc, zbuf, xlen);
+        /* err = __tcpch_get_random_bytes (zbuf, xlen); */
+        memset(zbuf, 0, xlen);
+        get_random_bytes (zbuf, xlen);
+        err = crypto_shash_update (sdesc, zbuf, xlen);
 
-          /* so now we have built x || i || zi, so hash it and compare */
-          memset(trial, 0, dsize);
-          err = crypto_shash_final (sdesc, trial);
-          if (err < 0)
-            {
-              pr_err ("tcpch_solve_challenge: Failed to compute hash operation!\n");
-              head = ERR_PTR(err);
-              goto out;
-            }
+        /* so now we have built x || i || zi, so hash it and compare */
+        memset(trial, 0, dsize);
+        err = crypto_shash_final (sdesc, trial);
+        if (err < 0)
+          {
+            pr_err ("tcpch_solve_challenge: Failed to compute hash operation!\n");
+            headerr = ERR_PTR(err);
+            goto out_err;
+          }
 
-          /* check the bits */
-          found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
+        /* check the bits */
+        found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
       } while (found == 0);
 
       pr_info ("found a solution to the %d'ts challenge\n", i);
 
       /* allocate a solution struct and add it the list */
-      sol = tcpch_alloc_solution (ts, chlg->ndiff, chlg->nz, chlg->len);
-      sol->sbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
-      memcpy (sol->sbuf, zbuf, xlen);
+      item = tcpch_alloc_solution_item ();
+      item->sbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
+      memcpy (item->sbuf, zbuf, xlen);
 
-      if (head == 0)
-        {
-          head = sol;
-        }
-      else
-        {
-          list_add_tail (&(sol->list), &(head->list));
-        }
+      __add_solution_item (head, item);
+
       pr_info ("inserted solution, moving on to the next!\n");
     }
 
   kfree (trial);
   kfree (zbuf);
-out:
   crypto_free_shash (alg);
   kfree (sdesc);
 
   return head;
+
+out_err:
+  tcpch_free_solution (head);
+  return headerr;
 } /* __solve_challenge */
 
 /* tcpch_solve_challenge */
-struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
-    struct tcpch_challenge *chlg)
+struct tcpch_solution_head *tcpch_solve_challenge (struct tcpch_challenge *chlg)
 {
   return __solve_challenge (chlg);
 }
@@ -481,11 +504,11 @@ EXPORT_SYMBOL_GPL (tcpch_generate_challenge);
 
 int __verify_solution (const struct net *net, const struct iphdr *iph,
     const struct tcphdr *th, struct timeval *stamp,
-    struct tcpch_solution *sol)
+    struct tcpch_solution_head *sol)
 {
   struct crypto_shash   *alg;
   struct shash_desc     *sdesc;
-  struct tcpch_solution *itr, *tmp;
+  struct tcpch_solution_item *itr, *tmp;
 
   int ret, err;
   u16 i;
@@ -565,7 +588,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   /* now we have xbuf, the real work starts here! */
   i = 1;
-  list_for_each_entry_safe (itr, tmp, &(sol->list), list)
+  list_for_each_entry_safe (itr, tmp, &(sol->head), list)
     {
       err = crypto_shash_init (sdesc);
       if (err < 0)
@@ -624,7 +647,7 @@ out:
 } /* __verify_solution */
 
 int tcpch_verify_solution (struct sock *sk, struct sk_buff *skb,
-    struct tcpch_solution *sol)
+    struct tcpch_solution_head *sol)
 {
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
@@ -663,7 +686,7 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
 }
 EXPORT_SYMBOL_GPL (tcpch_get_length);
 
-u32 tcpch_get_solution_length (struct tcpch_solution *sol)
+u32 tcpch_get_solution_length (struct tcpch_solution_head *sol)
 {
   u32 need;
   if (!sol)

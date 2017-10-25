@@ -32,28 +32,33 @@
  * using.
  */
 struct tcpch_challenge {
-    u8            *cbuf;      /* the actual challenge to send to the client */
+  u8            *cbuf;      /* the actual challenge to send to the client */
 
-    u32          ts;         /* the timestamp of the current challenge     */
-    u8           len;        /* the length of (x+z) in the puzzle          */
-    u8           nz;         /* the number of subpuzzles                   */
-    u8           ndiff;      /* the number of bits of difficulty           */
-    bool         opt_ts;     /* flag to check wether to use the timestamp
-                                from the options field in the header       */
+  u32          ts;         /* the timestamp of the current challenge     */
+  u8           len;        /* the length of (x+z) in the puzzle          */
+  u8           nz;         /* the number of subpuzzles                   */
+  u8           ndiff;      /* the number of bits of difficulty           */
+  bool         opt_ts;     /* flag to check wether to use the timestamp
+                              from the options field in the header       */
 };
 
 /* This is the basic structure that will contain each solution to a subpuzzle.
  * The chaining of these solutions will form the full solution to a given
  * challenge
  */
-struct tcpch_solution {
-    u32            ts;         /* the timestamp used for the subpuzzle */
-    u8             nz;         /* the number of subpuzzles             */
-    u8             diff;       /* the number of diffuclty bits         */
-    u8             len;        /* the length of (x+z) in the puzzles   */
-    u8             *sbuf;      /* the current solution                 */
+struct tcpch_solution_head {
+  u32            ts;         /* the timestamp used for the subpuzzle */
+  u8             nz;         /* the number of subpuzzles             */
+  u8             diff;       /* the number of diffuclty bits         */
+  u8             len;        /* the length of (x+z) in the puzzles   */
 
-    struct list_head  list;     /* the list of sub-solutions contained  */
+  struct list_head  head;     /* the list of sub-solutions contained  */
+};
+
+struct tcpch_solution_item {
+  u8             *sbuf;      /* the current solution                 */
+
+  struct list_head list;     /* the list pointer for the next item   */
 };
 
 /**
@@ -77,12 +82,15 @@ struct tcpch_challenge *tcpch_alloc_challenge(u32 mts, u8 mlen,
  * @mnz: The number of subchallenges to be solved, this is only useful at
  *    the head of the list
  * @mlen: The length of (x+z) in bits
- *
- * Allocate memory for a Tcp challenge solution. This will set the solution
- * data to 0 and WILL NOT allocate memory to hold the solution. This contains
- * a list head to point to the next sub challenge solution.
  */
-struct tcpch_solution *tcpch_alloc_solution (u32 mts, u8 diff, u8 mnz, u8 mlen);
+struct tcpch_solution_head *tcpch_alloc_solution_head (u32 mts, u8 diff, u8 mnz, u8 mlen);
+
+/**
+ * tcpch_alloc_solution_head () - allocate memory for a challenge solution item
+ *
+ * @return the allocated structure with the solution buffer set to 0.
+ */
+struct tcpch_solution_item *tcpch_alloc_solution_item (void);
 
 /**
  * tcpch_free_challenge() - Free the space occupied by a challenge
@@ -109,7 +117,7 @@ void tcpch_free_challenge_safe (struct tcpch_challenge *chlg);
  * the solutions in the list. It will free up every node in the list
  * starting from the one passed as an argument.
  */
-void tcpch_free_solution (struct tcpch_solution *sol);
+void tcpch_free_solution (struct tcpch_solution_head *head);
 
 /*
  * tcpch_generate_challenge () - Generate challenge from a give packet
@@ -136,18 +144,16 @@ struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
  * @return <= 0 if it fails and > 0 if it succeeds.
  */
 int tcpch_verify_solution (struct sock *sk, struct sk_buff *skb,
-              struct tcpch_solution *sol);
+              struct tcpch_solution_head *sol);
 
 /*
  * tcpch_solve_challenge () - Solve a given challenge
  *
- * @skb:     incoming packet
  * @chlg:    the challenge to solve
  *
  * @return the solved challenge if successful
  */
-struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
-              struct tcpch_challenge *chlg);
+struct tcpch_solution_head *tcpch_solve_challenge (struct tcpch_challenge *chlg);
 
 /*
  * tcpch_get_length () - Get the length of a challenge in bytes. Aligned to 32 bits
@@ -165,7 +171,7 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg);
  *
  * @return the solution's length in bytes aligned to 32 bits
  */
-u32 tcpch_get_solution_length (struct tcpch_solution *sol);
+u32 tcpch_get_solution_length (struct tcpch_solution_head *sol);
 
 /*
  * challenge_v4_check () - Check for a challenge solution and verify it.

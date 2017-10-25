@@ -3778,7 +3778,8 @@ static inline void tcp_parse_solution (const struct net *net,
     int len, const unsigned char *pktopt,
     struct tcp_options_received *opt_rx)
 {
-  struct tcpch_solution *sol, *head;
+  struct tcpch_solution_head *head;
+  struct tcpch_solution_item *item;
   const unsigned char *ptr = pktopt;
   u32 ts;
   u8 len_of_subc = net->ipv4.sysctl_tcp_challenge_len / 16;
@@ -3800,13 +3801,13 @@ static inline void tcp_parse_solution (const struct net *net,
 
 
   /* now read each sub-challenge solution and parse it */
-  head = 0;
+  head = tcpch_alloc_solution_head (ts, net->ipv4.sysctl_tcp_challenge_diff,
+          net->ipv4.sysctl_tcp_challenge_nz, net->ipv4.sysctl_tcp_challenge_len);
   for (i=0; i < net->ipv4.sysctl_tcp_challenge_nz; ++i)
     {
       /* allocate a solution */
-      sol = tcpch_alloc_solution (ts, net->ipv4.sysctl_tcp_challenge_diff,
-          net->ipv4.sysctl_tcp_challenge_nz, net->ipv4.sysctl_tcp_challenge_len);
-      if (IS_ERR(sol))
+      item = tcpch_alloc_solution_item ();
+      if (IS_ERR(item))
         {
           if (head)
               tcpch_free_solution (head);
@@ -3814,18 +3815,11 @@ static inline void tcp_parse_solution (const struct net *net,
         }
 
       /* copy the memory content of the solution */
-      memcpy(sol->sbuf, ptr, len_of_subc);
+      memcpy(item->sbuf, ptr, len_of_subc);
       ptr += len_of_subc;
 
       /* maintain the list of solutions */
-      if (!head)
-        {
-          head = sol;
-        }
-      else
-        {
-          list_add_tail (&(head->list), &(sol->list));
-        }
+      list_add_tail (&(item->list), &(head->head));
     }
 
   /* done! */
@@ -5791,7 +5785,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 	struct tcp_fastopen_cookie foc = { .len = -1 };
 	int saved_clamp = tp->rx_opt.mss_clamp;
 	bool fastopen_fail;
-  struct tcpch_solution *sol = 0;
+  struct tcpch_solution_head *sol = 0;
 
 	tcp_parse_options(sock_net(sk), skb, &tp->rx_opt, 0, &foc);
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
@@ -5861,7 +5855,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
     if (tp->rx_opt.chlg)
       {
         pr_info ("SYNACK packet contains a challenge!\n");
-        sol = tcpch_solve_challenge (skb, tp->rx_opt.chlg);
+        sol = tcpch_solve_challenge (tp->rx_opt.chlg);
         if (IS_ERR(sol))
           {
             pr_info ("Could not build solution!\n");

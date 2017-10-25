@@ -436,7 +436,7 @@ struct tcp_out_options {
   union {
       /* only one of these should be here! */
       struct tcpch_challenge *chlg; /* send a tcp challenge */
-      struct tcpch_solution *sol;   /* send a tcp challenge solution */
+      struct tcpch_solution_head *sol;   /* send a tcp challenge solution */
   };
 #endif
 };
@@ -463,8 +463,8 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 {
 #ifdef CONFIG_SYN_COOKIES
   struct tcpch_challenge *chlg;
-  struct tcpch_solution *sol;
-  struct tcpch_solution *head;
+  struct tcpch_solution_item *item;
+  struct tcpch_solution_head *head;
   u16 syn_challenge_opt_len;
   u8 *p8;
   u16 *p16;
@@ -592,9 +592,9 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 
       /* now the solutions */
       p8 = (u8 *)p32;
-      list_for_each_entry (sol, &(head->list), list)
+      list_for_each_entry (item, &(head->head), list)
         {
-          memcpy (p8, sol->sbuf, (head->len/16));
+          memcpy (p8, item->sbuf, (head->len/16));
           p8 += (head->len/16);
         }
 

@@ -122,7 +122,7 @@ struct tcp_options_received {
   union {
       /* cannot have both a challenge and a solution */
       struct tcpch_challenge *chlg; /* a tcp challenge if available */
-      struct tcpch_solution  *sol;  /* a tcp solution if available */
+      struct tcpch_solution_head  *sol;  /* a tcp solution if available */
   };
 #endif
 };
@@ -406,7 +406,7 @@ struct tcp_sock {
 
 #ifdef CONFIG_SYN_CHALLENGE
   int saw_challenge;
-  struct tcpch_solution  *sol;
+  struct tcpch_solution_head  *sol;
 #endif
 
 /* TCP fastopen related information */
