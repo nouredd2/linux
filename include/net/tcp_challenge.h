@@ -24,8 +24,8 @@
 #define TCPCH_DEFAULT_SIZE 32
 
 #define TCPCH_DEFAULT_LEN 64
-#define TCPCH_DEFAULT_NZ 5
-#define TCPCH_DEFAULT_NDIFF 20
+#define TCPCH_DEFAULT_NZ 1
+#define TCPCH_DEFAULT_NDIFF 3
 
 /* This is the basic structure that will contain each challenge. The challenge
  * is composed of one clg of length (256 bits) since it is SHA256 that we are

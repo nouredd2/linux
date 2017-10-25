@@ -222,9 +222,7 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
   return cmp;
 } /* __tcpch_compare_bits */
 
-struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
-    const struct tcphdr *th,
-    struct tcpch_challenge *chlg)
+struct tcpch_solution *__solve_challenge (struct tcpch_challenge *chlg)
 {
   struct crypto_shash     *alg;
   struct shash_desc       *sdesc;
@@ -240,17 +238,6 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
   u16 i;
 
   u32 ts;
-
-  __be32 saddr, daddr;
-  __be16 sport, dport;
-
-  /* get source and destination addresses */
-  saddr = iph->saddr;
-  daddr = iph->daddr;
-
-  /* get source and destination port numbers */
-  sport = th->source;
-  dport = th->dest;
 
   /* get the timestamp in microsec */
   ts = chlg->ts;
@@ -275,6 +262,12 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
 
   /* grab x from the challenge */
   xbuf = chlg->cbuf;
+  if (! xbuf)
+    {
+      pr_err ("Empty challenge detected. Returning error!\n");
+      head = ERR_PTR(-EINVAL);
+      goto out;
+    }
 
   /* create z buffer to hold trials */
   xlen = chlg->len / 16;
@@ -300,10 +293,11 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
     {
       found = 0;
       do {
+        pr_info ("Starting new section of solving!\n");
           err = crypto_shash_init (sdesc);
           if (err < 0)
             {
-              pr_info ("tcpch: Failed toe init hash function!\n");
+              pr_err ("tcpch: Failed toe init hash function!\n");
               head = ERR_PTR(err);
               goto out;
             }
@@ -311,11 +305,19 @@ struct tcpch_solution *__solve_challenge (const struct iphdr *iph,
           err = crypto_shash_update (sdesc, (u8 *)&i, sizeof (u16));
 
           /* err = __tcpch_get_random_bytes (zbuf, xlen); */
+          memset(zbuf, 0, xlen);
           get_random_bytes (zbuf, xlen);
           err = crypto_shash_update (sdesc, zbuf, xlen);
 
           /* so now we have built x || i || zi, so hash it and compare */
+          memset(trial, 0, dsize);
           err = crypto_shash_final (sdesc, trial);
+          if (err < 0)
+            {
+              pr_err ("tcpch_solve_challenge: Failed to compute hash operation!\n");
+              head = ERR_PTR(err);
+              goto out;
+            }
 
           /* check the bits */
           found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
@@ -352,10 +354,7 @@ out:
 struct tcpch_solution *tcpch_solve_challenge (struct sk_buff *skb,
     struct tcpch_challenge *chlg)
 {
-  const struct iphdr *iph = ip_hdr (skb);
-  const struct tcphdr *th = tcp_hdr (skb);
-
-  return __solve_challenge (iph, th, chlg);
+  return __solve_challenge (chlg);
 }
 EXPORT_SYMBOL_GPL (tcpch_solve_challenge);
 
