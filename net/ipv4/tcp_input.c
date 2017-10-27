@@ -5785,7 +5785,10 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 	struct tcp_fastopen_cookie foc = { .len = -1 };
 	int saved_clamp = tp->rx_opt.mss_clamp;
 	bool fastopen_fail;
-  struct tcpch_solution_head *sol = 0;
+	int tcp_header_len = 0;
+#ifdef CONFIG_SYN_CHALLENGE
+	struct tcpch_solution_head *sol = 0;
+#endif
 
 	tcp_parse_options(sock_net(sk), skb, &tp->rx_opt, 0, &foc);
 	if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr)
@@ -5869,6 +5872,13 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
             tcpch_free_solution (tp->sol);
         tp->sol = sol;
         tp->saw_challenge = 1;
+
+		if (tp->sol) {
+			tcp_header_len = sizeof (struct tcphdr) + 
+					tcpch_get_solution_length (tp->sol) +
+					TCPOLEN_MSS;
+			tp->tcp_header_len = tcp_header_len;
+		}
       }
 #endif
 
@@ -5890,8 +5900,11 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 
 		if (tp->rx_opt.saw_tstamp) {
 			tp->rx_opt.tstamp_ok	   = 1;
-			tp->tcp_header_len =
-				sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED;
+			if (tcp_header_len)
+				tp->tcp_header_len = tcp_header_len + TCPOLEN_TSTAMP_ALIGNED;
+			else
+				tp->tcp_header_len =
+					sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED;
 			tp->advmss	    -= TCPOLEN_TSTAMP_ALIGNED;
 			tcp_store_ts_recent(tp);
 		} else {
@@ -5938,11 +5951,13 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
 						  TCP_DELACK_MAX, TCP_RTO_MAX);
 
+			pr_info ("I am exiting here!\n");
 discard:
 			tcp_drop(sk, skb);
 			return 0;
 		} else {
-			tcp_send_ack(sk);
+			pr_info ("here's where I think I am exiting!\n");
+			tcp_send_ack_sol (sk, tp->sol);
 		}
 		return -1;
 	}

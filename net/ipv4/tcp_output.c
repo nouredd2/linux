@@ -465,7 +465,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
   struct tcpch_challenge *chlg;
   struct tcpch_solution_item *item;
   struct tcpch_solution_head *head;
-  u16 syn_challenge_opt_len;
+  u8 syn_challenge_opt_len;
   u8 *p8;
   u16 *p16;
   u32 *p32;
@@ -549,7 +549,6 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
           *p8 = TCPOPT_NOP;
           *(++p8) = TCPOPT_NOP;
         }
-      /*
       else if ((syn_challenge_opt_len & 3) == 1)
         {
           *p8 = TCPOPT_NOP;
@@ -560,7 +559,6 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
         {
           *p8 = TCPOPT_NOP;
         }
-      */
 
       /* done advance the main pointer */
       ptr += (syn_challenge_opt_len + 3)>> 2;
@@ -581,14 +579,26 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
           return;
         }
 
+      list_for_each_entry (item, &(head->head), list)
+	  {
+		  pr_info ("Should be writing to buffer now!\n");
+	  }
+
+	  pr_info ("Should be writing %x and %x\n", TCPOPT_SOLUTION, syn_challenge_opt_len);
+	  pr_info (" syn_challenge_opt_len = %d\n", syn_challenge_opt_len);
+
       /* put in the option header */
       p16 = (u16 *)ptr;
-      *p16++ = htons (((u16)(TCPOPT_SOLUTION << 8)) | 
+      *p16++ = htons (((u16)(253 << 8)) | 
                 syn_challenge_opt_len);
 
       /* throw in the timestamp */
       p32 = (u32 *)p16;
       *p32++ = htonl (head->ts);
+
+	  ptr += (2 + 4 + 3) >> 2;
+
+#if 0
 
       /* now the solutions */
       p8 = (u8 *)p32;
@@ -604,7 +614,6 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
           *p8 = TCPOPT_NOP;
           *(++p8) = TCPOPT_NOP;
         }
-      /*
       else if ((syn_challenge_opt_len & 3) == 1)
         {
           *p8 = TCPOPT_NOP;
@@ -615,10 +624,10 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
         {
           *p8 = TCPOPT_NOP;
         }
-      */
 
       /* done, advance the pointers */
       ptr += (syn_challenge_opt_len + 3) >> 2;
+#endif
     }
 #endif
 
@@ -3846,6 +3855,51 @@ void tcp_send_ack(struct sock *sk)
 	tcp_transmit_skb(sk, buff, 0, (__force gfp_t)0);
 }
 EXPORT_SYMBOL_GPL(tcp_send_ack);
+
+void tcp_send_ack_sol(struct sock *sk, struct tcpch_solution_head *sol)
+{
+	struct sk_buff *buff;
+
+	if (!sol)
+		return tcp_send_ack(sk);
+	
+	pr_info ("Sending ACK packet with solution in it!\n");
+
+	/* If we have been reset, we may not send again. */
+	if (sk->sk_state == TCP_CLOSE)
+		return;
+
+	tcp_ca_event(sk, CA_EVENT_NON_DELAYED_ACK);
+
+	/* We are not putting this on the write queue, so
+	 * tcp_transmit_skb() will set the ownership to this
+	 * sock.
+	 */
+	buff = alloc_skb(MAX_TCP_HEADER,
+			 sk_gfp_mask(sk, GFP_ATOMIC | __GFP_NOWARN));
+	if (unlikely(!buff)) {
+		inet_csk_schedule_ack(sk);
+		inet_csk(sk)->icsk_ack.ato = TCP_ATO_MIN;
+		inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
+					  TCP_DELACK_MAX, TCP_RTO_MAX);
+		return;
+	}
+
+	/* Reserve space for headers and prepare control bits. */
+	skb_reserve(buff, MAX_TCP_HEADER);
+	tcp_init_nondata_skb(buff, tcp_acceptable_seq(sk), TCPHDR_ACK);
+
+	/* We do not want pure acks influencing TCP Small Queues or fq/pacing
+	 * too much.
+	 * SKB_TRUESIZE(max(1 .. 66, MAX_TCP_HEADER)) is unfortunately ~784
+	skb_set_tcp_pure_ack(buff);
+	 */
+
+	/* Send it off, this clears delayed acks for us. */
+	tcp_transmit_skb(sk, buff, 0, (__force gfp_t)0);
+}
+EXPORT_SYMBOL_GPL(tcp_send_ack_sol);
+
 
 /* This routine sends a packet with an out of date sequence
  * number. It assumes the other end will try to ack it.

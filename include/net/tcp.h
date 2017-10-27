@@ -42,6 +42,7 @@
 #include <net/tcp_states.h>
 #include <net/inet_ecn.h>
 #include <net/dst.h>
+#include <net/tcp_challenge.h>
 
 #include <linux/seq_file.h>
 #include <linux/memcontrol.h>
@@ -187,8 +188,8 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOPT_TIMESTAMP	8	/* Better RTT estimations/PAWS */
 #define TCPOPT_MD5SIG		19	/* MD5 Signature (RFC2385) */
 #define TCPOPT_FASTOPEN		34	/* Fast open (RFC7413) */
-#define TCPOPT_CHALLENGE  250 /* TCP challenges */
-#define TCPOPT_SOLUTION   251 /* TCP challenge solutions */
+#define TCPOPT_CHALLENGE  252 /* TCP challenges */
+#define TCPOPT_SOLUTION   253 /* TCP challenge solutions */
 #define TCPOPT_EXP		254	/* Experimental */
 /* Magic number to be after the option value for sharing TCP
  * experimental options. See draft-ietf-tcpm-experimental-options-00.txt
@@ -563,6 +564,7 @@ void tcp_send_fin(struct sock *sk);
 void tcp_send_active_reset(struct sock *sk, gfp_t priority);
 int tcp_send_synack(struct sock *);
 void tcp_push_one(struct sock *, unsigned int mss_now);
+void tcp_send_ack_sol(struct sock *sk, struct tcpch_solution_head *sol);
 void tcp_send_ack(struct sock *sk);
 void tcp_send_delayed_ack(struct sock *sk);
 void tcp_send_loss_probe(struct sock *sk);
