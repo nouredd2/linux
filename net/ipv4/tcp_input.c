@@ -3815,6 +3815,14 @@ static inline void tcp_parse_solution (const struct net *net,
         }
 
       /* copy the memory content of the solution */
+      item->sbuf = (u8 *) kmalloc (len_of_subc, GFP_KERNEL);
+      if (IS_ERR(item->sbuf))
+        {
+          item->sbuf = 0;
+          if (head)
+              tcpch_free_solution (head);
+          return;
+        }
       memcpy(item->sbuf, ptr, len_of_subc);
       ptr += len_of_subc;
 
