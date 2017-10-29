@@ -535,6 +535,15 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   ts = sol->ts;
 
+  /* get source and destination addresses */
+  saddr = iph->saddr;
+  daddr = iph->daddr;
+
+  /* get source and destination addresses */
+  sport = th->source;
+  dport = th->dest;
+  sseq = ntohl (th->seq);
+
   /* need to build x first */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
                               CRYPTO_ALG_TYPE_HASH_MASK);
@@ -560,11 +569,12 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
                               TCPCH_KEY_SIZE);
 
   /* create key || iss || saddr || sport || daddr || dport || ts */
+  /* Note that source and destination addresses are flipped in this case */
   err = crypto_shash_update (sdesc, (u8 *) &sseq, sizeof (u32));
-  err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
-  err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
+  err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
+  err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   dsize = crypto_shash_digestsize (alg);
@@ -610,6 +620,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
       if (ret != 0)
         {
           /* one of the sub puzzles failed */
+          pr_info ("Verification of sub solution %d failed!\n", i);
           ret = 0;
           goto out_free_all;
         }

@@ -3955,9 +3955,10 @@ void tcp_parse_options(const struct net *net,
         break;
       case TCPOPT_SOLUTION:
         /* Received a challenge solution */
-        if (th->ack)
-            tcp_parse_solution (net, opsize, ptr,
+        if (th->ack) {
+          tcp_parse_solution (net, opsize, ptr,
               opt_rx);
+        }
         break;
 #endif
 
@@ -6668,8 +6669,10 @@ struct sock *challenge_v4_check (struct sock *sk,
       goto out;
     }
 
+  pr_info ("Obtained solution to the presented challenge!\n");
   if (! tcpch_verify_solution (sk, skb, tcp_opt.sol))
     {
+      pr_info ("Solution verification failed!\n");
       __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
       goto out;
     }
