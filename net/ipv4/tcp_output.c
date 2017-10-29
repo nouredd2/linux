@@ -589,21 +589,13 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 
       /* put in the option header */
       p16 = (u16 *)ptr;
-      *p16++ = htons (((u16)(253 << 8)) | 6);
+      *p16++ = htons (((u16)(253 << 8)) | 10);
           /* syn_challenge_opt_len);*/
 
       /* throw in the timestamp */
       p32 = (u32 *)p16;
       *p32++ = htonl (head->ts);
 
-      p8 = (u8 *)p32;
-      *p8++ = TCPOPT_NOP;
-      *p8++ = TCPOPT_NOP;
-
-      ptr += (2 + 4 + 2) >> 2;
-
-
-#if 0
       /* now the solutions */
       p8 = (u8 *)p32;
       list_for_each_entry (item, &(head->head), list)
@@ -611,7 +603,12 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
           memcpy (p8, item->sbuf, (head->len/16));
           p8 += (head->len/16);
         }
+      *p8++ = TCPOPT_NOP;
+      *p8++ = TCPOPT_NOP;
 
+      ptr += (10 + 3) >> 2;
+
+#if 0
       /* how to do the alignment */
       if ((syn_challenge_opt_len & 3) == 2)
         {
