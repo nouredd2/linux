@@ -406,9 +406,6 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   __be16 sport = th->source;
   __be16 dport = th->dest;
 
-  /* also keep the initial sequence number */
-  __u32 sseq = ntohl (th->seq);
-
   /* make sure the key is generated */
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
 
@@ -434,8 +431,8 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   err = crypto_shash_update (sdesc, tcp_challenge_secret,
       TCPCH_KEY_SIZE);
 
-  /* create key || iss || saddr || sport || daddr || dport || ts */
-  err = crypto_shash_update (sdesc, (u8 *) &sseq, sizeof(u32));
+  /* create key || saddr || sport || daddr || dport || ts */
+  err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
@@ -519,7 +516,6 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   __be32 saddr, daddr;
   __be16 sport, dport;
-  __u32 sseq;
 
   u8 *xbuf;
   u8 *digest;
@@ -542,7 +538,6 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   /* get source and destination addresses */
   sport = th->source;
   dport = th->dest;
-  sseq = ntohl (th->seq);
 
   /* need to build x first */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
@@ -568,13 +563,12 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   err = crypto_shash_update (sdesc, tcp_challenge_secret,
                               TCPCH_KEY_SIZE);
 
-  /* create key || iss || saddr || sport || daddr || dport || ts */
-  /* Note that source and destination addresses are flipped in this case */
-  err = crypto_shash_update (sdesc, (u8 *) &sseq, sizeof (u32));
-  err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
-  err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
+  /* create key || saddr || sport || daddr || dport || ts */
+  err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
+  err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
+  err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
   err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   dsize = crypto_shash_digestsize (alg);
