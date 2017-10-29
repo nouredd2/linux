@@ -729,7 +729,6 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 	}
 
   pr_info ("Skipping writing the solution to the TCP options\n");
-#if 0
   /* first check for the solution and make sure we set it out */
   if (likely(tp->sol))
     {
@@ -741,6 +740,7 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
       remaining -= blen;
     }
 
+#if 0
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling) &&
         remaining >= TCPOLEN_WSCALE_ALIGNED) {
 		opts->ws = tp->rx_opt.rcv_wscale;
