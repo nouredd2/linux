@@ -360,7 +360,7 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
       __add_solution_item (head, item);
 
       pr_info ("inserted solution, moving on to the next!\n");
-      pr_info ("solution is: %c %c %c %c \n", item->sbuf[0], item->sbuf[1], item->sbuf[2], item->sbuf[3]);
+      pr_info ("solution is: %x %x %x %x \n", item->sbuf[0], item->sbuf[1], item->sbuf[2], item->sbuf[3]);
     }
 
   kfree (trial);

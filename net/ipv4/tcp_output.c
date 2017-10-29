@@ -469,6 +469,9 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
   u8 *p8;
   u16 *p16;
   u32 *p32;
+
+  int i;
+  u8 *tmp;
 #endif
 
 	u16 options = opts->options;	/* mungable copy */
@@ -596,36 +599,24 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
       p32 = (u32 *)p16;
       *p32++ = htonl (head->ts);
 
-      p8 = (u8 *)p32;
-      *p8++ = TCPOPT_NOP;
-      *p8++ = TCPOPT_NOP;
-      ptr += (8 + 3) >> 2;
-
-      list_for_each_entry (item, &(head->head), list)
-        {
-          if (item->sbuf)
-            {
-              pr_info ("Solution when writing is: %c %c %c %c\n", 
-                  item->sbuf[0],
-                  item->sbuf[1],
-                  item->sbuf[2],
-                  item->sbuf[3]);
-            }
-        }
-
-#if 0
       /* now the solutions */
       p8 = (u8 *)p32;
       list_for_each_entry (item, &(head->head), list)
         {
-          memcpy (p8, item->sbuf, (head->len/16));
-          p8 += (head->len/16);
+          /* memcpy (p8, item->sbuf, (head->len/16));*/
+          tmp = item->sbuf;
+          for (i=0; i < (head->len/16); ++i)
+            {
+              *p8++ = *(tmp++);
+            }
+          /* p8 += (head->len/16);*/
         }
       *p8++ = TCPOPT_NOP;
       *p8++ = TCPOPT_NOP;
 
       ptr += (10 + 3) >> 2;
 
+#if 0
       /* how to do the alignment */
       if ((syn_challenge_opt_len & 3) == 2)
         {
