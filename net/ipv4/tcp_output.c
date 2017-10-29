@@ -587,19 +587,23 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
       pr_info ("Should be writing %x and %x\n", TCPOPT_SOLUTION, syn_challenge_opt_len);
       pr_info (" syn_challenge_opt_len = %d\n", syn_challenge_opt_len);
 
-#if 0
       /* put in the option header */
       p16 = (u16 *)ptr;
-      *p16++ = htons (((u16)(253 << 8)) | 
-          syn_challenge_opt_len);
+      *p16++ = htons (((u16)(253 << 8)) | 6);
+          /* syn_challenge_opt_len);*/
 
       /* throw in the timestamp */
       p32 = (u32 *)p16;
       *p32++ = htonl (head->ts);
 
-      ptr += (2 + 4 + 3) >> 2;
+      p8 = (u8 *)p32;
+      *p8++ = TCPOPT_NOP;
+      *p8++ = TCPOPT_NOP;
+
+      ptr += (2 + 4 + 2) >> 2;
 
 
+#if 0
       /* now the solutions */
       p8 = (u8 *)p32;
       list_for_each_entry (item, &(head->head), list)
