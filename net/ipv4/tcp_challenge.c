@@ -350,7 +350,7 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
         found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
       } while (found == 0);
 
-      pr_info ("found a solution to the %d'ts challenge\n", i);
+      pr_info ("found a solution to the %d'th challenge\n", i);
 
       /* allocate a solution struct and add it the list */
       item = tcpch_alloc_solution_item ();
@@ -360,6 +360,7 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
       __add_solution_item (head, item);
 
       pr_info ("inserted solution, moving on to the next!\n");
+      pr_info ("solution is: %c %c %c %c \n", item->sbuf[0], item->sbuf[1], item->sbuf[2], item->sbuf[3]);
     }
 
   kfree (trial);
