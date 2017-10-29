@@ -5867,18 +5867,21 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
         pr_info ("Produced solution for SYNACK challenge!\n");
 
         /* now check if the socket already holds a solution and clear it
-         */
+        */
         if (tp->sol)
             tcpch_free_solution (tp->sol);
+        pr_info ("Skipped assigning the solution\n");
+        /*
         tp->sol = sol;
         tp->saw_challenge = 1;
+        */
 
-		if (tp->sol) {
-			tcp_header_len = sizeof (struct tcphdr) + 
-					tcpch_get_solution_length (tp->sol) +
-					TCPOLEN_MSS;
-			tp->tcp_header_len = tcp_header_len;
-		}
+        if (tp->sol) {
+          tcp_header_len = sizeof (struct tcphdr) + 
+            tcpch_get_solution_length (tp->sol) +
+            TCPOLEN_MSS;
+          tp->tcp_header_len = tcp_header_len;
+        }
       }
 #endif
 
