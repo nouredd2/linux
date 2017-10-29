@@ -706,18 +706,29 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
    * SYN packet because those things were not saved!
    */
 
+#ifdef CONFIG_TCP_MD5SIG
+	*md5 = tp->af_specific->md5_lookup(sk, sk);
+	if (*md5) {
+    pr_info ("Setting the MD5 option\n");
+		opts->options |= OPTION_MD5;
+		remaining -= TCPOLEN_MD5SIG_ALIGNED;
+	}
+#else
+	*md5 = NULL;
+#endif
+
 	opts->mss = tcp_advertise_mss(sk);
 	remaining -= TCPOLEN_MSS_ALIGNED;
 
-	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps) &&
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps && !*md5) &&
         remaining >= TCPOLEN_TSTAMP_ALIGNED) {
 		opts->options |= OPTION_TS;
 		opts->tsval = tcp_skb_timestamp(skb) + tp->tsoffset;
 		opts->tsecr = tp->rx_opt.ts_recent;
 		remaining -= TCPOLEN_TSTAMP_ALIGNED;
-    pr_info ("Added timestamp information\n");
 	}
-  pr_info ("Skipping adding the solution to the options!\n");
+
+  pr_info ("Skipping writing the solution to the TCP options\n");
 #if 0
   /* first check for the solution and make sure we set it out */
   if (likely(tp->sol))
