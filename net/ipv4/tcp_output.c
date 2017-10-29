@@ -592,7 +592,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 
       /* put in the option header */
       p16 = (u16 *)ptr;
-      *p16++ = htons (((u16)(253 << 8)) | 6);
+      *p16++ = htons (((u16)(253 << 8)) | 10);
           /* syn_challenge_opt_len);*/
 
       /* throw in the timestamp */
