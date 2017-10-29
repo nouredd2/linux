@@ -6680,6 +6680,9 @@ struct sock *challenge_v4_check (struct sock *sk,
   __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
   pr_info ("Solution verification succeeded!\n");
 
+  /* shorting this for debugging purposes */
+  goto out;
+
   /*
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
     tsoff = secure_tcp_ts_off(sock_net(sk),
