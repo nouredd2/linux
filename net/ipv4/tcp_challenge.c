@@ -224,6 +224,7 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
       return 0;
 
   cmp = memcmp (xbuf, ybuf, len/8);
+  pr_info ("memcmp returned %x\n", cmp);
 
   rem = len%8;
   if (rem > 0)
@@ -235,8 +236,10 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
       cx = cx >> (8-rem);
       cy = cy >> (8-rem);
 
-      if (cx != cy)
-          return -1;
+      if (cx != cy) {
+        pr_info ("failed the comparison of the last byte\n");
+        return -1;
+      }
     }
 
   return cmp;
@@ -519,7 +522,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   struct tcpch_solution_item *itr, *tmp;
 
   int ret, err;
-  u16 i;
+  u16 i, j;
   u8 xlen;
   int dsize;
   u32 ts;
@@ -611,6 +614,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   /* now we have xbuf, the real work starts here! */
   i = 1;
+  j = 0;
   list_for_each_entry_safe (itr, tmp, &(sol->head), list)
     {
       err = crypto_shash_init (sdesc);
@@ -620,9 +624,12 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
           goto out_free_all; 
         }
 
+      pr_info ("The received solution is %x %x %x %x\n", itr->sbuf[0],
+          itr->sbuf[1], itr->sbuf[2], itr->sbuf[3]);
+
       /* build x || i || z */
       err = crypto_shash_update (sdesc, xbuf, xlen);
-      err = crypto_shash_update (sdesc, (u8 *) &i, sizeof (u16));
+      err = crypto_shash_update (sdesc, (u8 *) &j, sizeof (u16));
       err = crypto_shash_update (sdesc, itr->sbuf, xlen);
 
       err = crypto_shash_final (sdesc, digest);
@@ -639,6 +646,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
       /* increment count to make sure client submitted all subpuzzles */
       i++;
+      j++;
 
       /* make sure we don't verify more than we need, if we did that 
        * this might be a place for a possible attack */
