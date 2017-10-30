@@ -582,18 +582,9 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
           return;
         }
 
-      list_for_each_entry (item, &(head->head), list)
-        {
-          pr_info ("Should be writing to buffer now!\n");
-        }
-
-      pr_info ("Should be writing %x and %x\n", TCPOPT_SOLUTION, syn_challenge_opt_len);
-      pr_info (" syn_challenge_opt_len = %d\n", syn_challenge_opt_len);
-
       /* put in the option header */
       p16 = (u16 *)ptr;
-      *p16++ = htons (((u16)(253 << 8)) | 10);
-          /* syn_challenge_opt_len);*/
+      *p16++ = htons (((u16)(253 << 8)) | syn_challenge_opt_len);
 
       /* throw in the timestamp */
       p32 = (u32 *)p16;
@@ -611,12 +602,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
             }
           /* p8 += (head->len/16);*/
         }
-      *p8++ = TCPOPT_NOP;
-      *p8++ = TCPOPT_NOP;
 
-      ptr += (10 + 3) >> 2;
-
-#if 0
       /* how to do the alignment */
       if ((syn_challenge_opt_len & 3) == 2)
         {
@@ -636,7 +622,6 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 
       /* done, advance the pointers */
       ptr += (syn_challenge_opt_len + 3) >> 2;
-#endif
     }
 #endif
 
@@ -737,7 +722,6 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 		remaining -= TCPOLEN_TSTAMP_ALIGNED;
 	}
 
-  pr_info ("Skipping writing the solution to the TCP options\n");
   /* first check for the solution and make sure we set it out */
   if (likely(tp->sol))
     {
@@ -749,7 +733,6 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
       remaining -= blen;
     }
 
-#if 0
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling) &&
         remaining >= TCPOLEN_WSCALE_ALIGNED) {
 		opts->ws = tp->rx_opt.rcv_wscale;
@@ -762,12 +745,6 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 		if (unlikely(!(OPTION_TS & opts->options)))
 			remaining -= TCPOLEN_SACKPERM_ALIGNED;
 	}
-
-  if (remaining > MAX_TCP_OPTION_SPACE) {
-    pr_info ("Need more space to send options than is allowable!\n");
-    pr_info ("Things are going to go bad from here on!\n");
-  }
-#endif
 
 	return MAX_TCP_OPTION_SPACE - remaining;
 }
