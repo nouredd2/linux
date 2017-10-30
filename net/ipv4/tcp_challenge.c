@@ -396,7 +396,6 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   u8  xlen;
   u8   *digest;
   u8   *xbuf;
-  u8 i;
 
   /* get source and destination addresses */
   __be32 saddr = iph->saddr;
@@ -466,10 +465,8 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   memcpy (xbuf, digest, xlen);
 
   pr_info ("Generated the preimage: ");
-  for (i=0; i < xlen; i++) {
-    pr_info ("%x ", xbuf[i]);
-  }
-  pr_info ("\n");
+  pr_info ("The generated x is %c %c %c %c\n", xbuf[0],
+      xbuf[1], xbuf[2], xbuf[3]);
 
   /* Done just set up the struct  */
   chlg = tcpch_alloc_challenge (ts, len, nz, diff);
@@ -590,6 +587,9 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
       goto out_free_digest;
     }
   memcpy (xbuf, digest, xlen);
+
+  pr_info ("The generated x is %c %c %c %c\n", xbuf[0],
+      xbuf[1], xbuf[2], xbuf[3]);
 
   /* now we have xbuf, the real work starts here! */
   i = 1;
