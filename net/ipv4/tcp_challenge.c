@@ -397,13 +397,16 @@ struct tcpch_challenge *__generate_challenge (const struct inet_request_sock *ir
   u8   *digest;
   u8   *xbuf;
 
-  /* get source and destination addresses */
-  __be32 saddr = ireq->ir_loc_addr;
-  __be32 daddr = ireq->ir_rmt_addr;
+  /* get source and destination addresses
+   * Note that I switched the source and destination
+   * here to match the outgoint packet.
+   */
+  __be32 daddr = ireq->ir_loc_addr;
+  __be32 saddr = ireq->ir_rmt_addr;
 
   /* get source and destination port numbers */
-  __be16 sport = ireq->ir_num;
-  __be16 dport = ireq->ir_rmt_port;
+  __be16 dport = htons(ireq->ir_num);
+  __be16 sport = ireq->ir_rmt_port;
 
   /* make sure the key is generated */
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
