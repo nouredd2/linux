@@ -174,14 +174,18 @@ void tcpch_free_solution (struct tcpch_solution_head *head)
 /* __init_sdesc_from_alg */
 struct shash_desc *__init_sdesc_from_alg (struct crypto_shash *alg)
 {
-  struct shash_desc *sdesc = (struct shash_desc *)
-                                kmalloc (sizeof (struct shash_desc), GFP_KERNEL);
+  struct shash_desc *sdesc;
+  int size;
+  
+  size = sizeof (struct shash_desc) + crypto_shash_descsize (alg);
+  sdesc = (struct shash_desc *) kmalloc (size, GFP_KERNEL);
   sdesc->tfm = alg;
   sdesc->flags = 0x0;
 
   return sdesc;
 }
 
+#if 0
 static int __tcpch_get_random_bytes (u8 *buf, int len)
 {
   /* this is not working for some reason. double check later! */
@@ -215,6 +219,7 @@ static int __tcpch_get_random_bytes (u8 *buf, int len)
   crypto_free_rng (rng);
   return ret;
 } /* __tcpch_get_random_bytes */
+#endif
 
 /* @return 0 if match, +/-1 otherwise */
 static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
@@ -238,8 +243,14 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
       cx = xbuf[idx];
       cy = ybuf[idx];
 
+      pr_info ("cx = %x\n", cx);
+      pr_info ("cy = %x\n", cy);
+
       cx = cx >> (8-rem);
       cy = cy >> (8-rem);
+
+      pr_info ("cx = %x\n", cx);
+      pr_info ("cy = %x\n", cy);
 
       if (cx != cy) {
         pr_info ("failed the comparison of the last byte\n");

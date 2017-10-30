@@ -5886,8 +5886,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
           tcp_header_len = sizeof (struct tcphdr) + 
             tcpch_get_solution_length (tp->sol) +
             TCPOLEN_MSS;
-          pr_info ("tcp_header_len = %d\n", tcp_header_len);
-          // tp->tcp_header_len = tcp_header_len;
+          tp->tcp_header_len = tcp_header_len;
         }
       }
 #endif
@@ -6650,7 +6649,6 @@ struct sock *challenge_v4_check (struct sock *sk,
   struct request_sock *req;
   int mss = 0;
   struct rtable *rt;
-  __u8 rcv_wscale;
   struct flowi4 fl4;
   u32 tsoff;
 
@@ -6681,14 +6679,14 @@ struct sock *challenge_v4_check (struct sock *sk,
   __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
   pr_info ("Solution verification succeeded!\n");
 
-  /*
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
     tsoff = secure_tcp_ts_off(sock_net(sk),
         ip_hdr(skb)->daddr,
         ip_hdr(skb)->saddr);
     tcp_opt.rcv_tsecr -= tsoff;
+  } else {
+    tsoff = 0;
   }
-  */
 
   pr_info ("Building the new socket\n");
   ret = NULL;
@@ -6696,16 +6694,11 @@ struct sock *challenge_v4_check (struct sock *sk,
   if (!req)
     goto out;
 
-  pr_info ("Allocated the new request socket\n");
-  req = 0;
-  goto out;
-
   ireq = inet_rsk(req);
   treq = tcp_rsk(req);
-	treq->ts_off = 0;
+	treq->ts_off = tsoff; 
   treq->rcv_isn = ntohl(th->seq) - 1;
   treq->snt_isn = ntohl(th->ack_seq) - 1;
-  treq->ts_off = 0;
   treq->txhash = net_tx_rndhash();
   req->mss = mss;
   ireq->ir_num = ntohs(th->dest);
@@ -6732,13 +6725,6 @@ struct sock *challenge_v4_check (struct sock *sk,
 
   req->num_retrans = 0;
 
-  if (tcp_opt.tstamp_ok)
-    {
-      treq->ts_off = secure_tcp_ts_off(sock_net(sk),
-          ip_hdr(skb)->daddr,
-          ip_hdr(skb)->saddr);
-    }
-
 	/*
 	 * We need to lookup the route here to get at the correct
 	 * window size. We should better make sure that the window size
@@ -6760,14 +6746,11 @@ struct sock *challenge_v4_check (struct sock *sk,
 	/* Try to redo what tcp_v4_send_synack did. */
 	req->rsk_window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
 
-	tcp_select_initial_window(tcp_full_space(sk), req->mss,
-				  &req->rsk_rcv_wnd, &req->rsk_window_clamp,
-				  ireq->wscale_ok, &rcv_wscale,
-				  dst_metric(&rt->dst, RTAX_INITRWND));
-
-	ireq->rcv_wscale  = rcv_wscale;
-
   tcp_ecn_create_request (req, skb, sk, &rt->dst);
+  tcp_openreq_init_rwin (req, sk, &rt->dst);
+
+	/* ireq->rcv_wscale  = rcv_wscale; */
+
 	/* ireq->ecn_ok = cookie_ecn_ok(&tcp_opt, sock_net(sk), &rt->dst);*/
 
   /* use the same syncookies.c routine */
