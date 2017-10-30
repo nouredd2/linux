@@ -271,6 +271,7 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
 
   /* get the timestamp in microsec */
   ts = chlg->ts;
+  pr_info ("Solution timestamp = %x\n", ts);
 
   /* create the hash algorithm */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
@@ -408,6 +409,8 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   /* make sure the key is generated */
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
 
+  pr_info ("Generation timestamp = %x\n", ts);
+
   /* create the hash algorithm */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
       CRYPTO_ALG_TYPE_HASH_MASK);
@@ -432,10 +435,15 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
 
   /* create key || saddr || sport || daddr || dport || ts */
   err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
+  pr_info ("saddr = %x\n", saddr);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
+  pr_info ("dport = %x\n", sport);
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
+  pr_info ("daddr = %x\n", daddr);
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
+  pr_info ("dport = %x\n", dport);
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
+  pr_info ("ts = %x\n", ts);
   err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   digestsize = crypto_shash_digestsize (alg);
@@ -465,7 +473,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   memcpy (xbuf, digest, xlen);
 
   pr_info ("Generated the preimage: ");
-  pr_info ("The generated x is %c %c %c %c\n", xbuf[0],
+  pr_info ("The generated x is %x %x %x %x\n", xbuf[0],
       xbuf[1], xbuf[2], xbuf[3]);
 
   /* Done just set up the struct  */
@@ -562,10 +570,15 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   /* create key || saddr || sport || daddr || dport || ts */
   err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
+  pr_info ("saddr = %x\n", saddr);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
+  pr_info ("dport = %x\n", sport);
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
+  pr_info ("daddr = %x\n", daddr);
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
+  pr_info ("dport = %x\n", dport);
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
+  pr_info ("ts = %x\n", ts);
   err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   dsize = crypto_shash_digestsize (alg);
@@ -588,7 +601,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
     }
   memcpy (xbuf, digest, xlen);
 
-  pr_info ("The generated x is %c %c %c %c\n", xbuf[0],
+  pr_info ("The generated x is %x %x %x %x\n", xbuf[0],
       xbuf[1], xbuf[2], xbuf[3]);
 
   /* now we have xbuf, the real work starts here! */
