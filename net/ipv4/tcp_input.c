@@ -6681,18 +6681,24 @@ struct sock *challenge_v4_check (struct sock *sk,
   __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
   pr_info ("Solution verification succeeded!\n");
 
+  /*
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
     tsoff = secure_tcp_ts_off(sock_net(sk),
         ip_hdr(skb)->daddr,
         ip_hdr(skb)->saddr);
     tcp_opt.rcv_tsecr -= tsoff;
   }
+  */
 
   pr_info ("Building the new socket\n");
   ret = NULL;
   req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
   if (!req)
     goto out;
+
+  pr_info ("Allocated the new request socket\n");
+  req = 0;
+  goto out;
 
   ireq = inet_rsk(req);
   treq = tcp_rsk(req);
