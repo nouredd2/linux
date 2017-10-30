@@ -124,6 +124,7 @@ void tcpch_free_solution (struct tcpch_solution_head *head);
  *                  and some configuration parameters
  *
  * @skb:  incoming packet
+ * @ireq: the request socket
  * @len:  the length of the challenge in bits
  * @nz:   the number of sub puzzles
  * @diff: the puzzle difficulty in bits
@@ -132,6 +133,7 @@ void tcpch_free_solution (struct tcpch_solution_head *head);
  * @return the built challenge structure
  */
 struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
+    const struct inet_request_sock *ireq,
     u8 len, u8 nz, u8 diff, u32 ts);
 
 /*

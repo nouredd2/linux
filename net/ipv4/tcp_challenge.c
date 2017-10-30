@@ -384,9 +384,8 @@ struct tcpch_solution_head *tcpch_solve_challenge (struct tcpch_challenge *chlg)
 EXPORT_SYMBOL_GPL (tcpch_solve_challenge);
 
 /* internal challenge generation */
-struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
-    const struct tcphdr *th, u32 ts,
-    u8 len, u8 nz, u8 diff)
+struct tcpch_challenge *__generate_challenge (const struct inet_request_sock *ireq,
+    u32 ts, u8 len, u8 nz, u8 diff)
 {
   struct crypto_shash     *alg;
   struct shash_desc       *sdesc;
@@ -399,12 +398,12 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   u8   *xbuf;
 
   /* get source and destination addresses */
-  __be32 saddr = iph->saddr;
-  __be32 daddr = iph->daddr;
+  __be32 saddr = ireq->ir_loc_addr;
+  __be32 daddr = ireq->ir_rmt_addr;
 
   /* get source and destination port numbers */
-  __be16 sport = th->source;
-  __be16 dport = th->dest;
+  __be16 sport = ireq->ir_num;
+  __be16 dport = ireq->ir_rmt_port;
 
   /* make sure the key is generated */
   net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
@@ -437,7 +436,7 @@ struct tcpch_challenge *__generate_challenge (const struct iphdr *iph,
   err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
   pr_info ("saddr = %x\n", saddr);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
-  pr_info ("dport = %x\n", sport);
+  pr_info ("sport = %x\n", sport);
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   pr_info ("daddr = %x\n", daddr);
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
@@ -492,16 +491,19 @@ out:
 
 /* challenge generation from a specific packet */
 struct tcpch_challenge *tcpch_generate_challenge (struct sk_buff *skb,
+    const struct inet_request_sock *ireq,
     u8 len, u8 nz, u8 diff, u32 ts)
 {
+  /* 
   const struct iphdr *iph = ip_hdr (skb);
   const struct tcphdr *th = tcp_hdr (skb);
+  */
+
   /* const struct net *net = sock_net (sk); */
   if (ts == 0)
-      ts = skb->skb_mstamp;
+      ts = tcp_skb_timestamp (skb);
 
-  return __generate_challenge (iph, th, ts, 
-      len, nz, diff);
+  return __generate_challenge (ireq, ts, len, nz, diff);
 } /* tcpch_generate_challenge */
 EXPORT_SYMBOL_GPL (tcpch_generate_challenge);
 
@@ -572,7 +574,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
   err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
   pr_info ("saddr = %x\n", saddr);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
-  pr_info ("dport = %x\n", sport);
+  pr_info ("sport = %x\n", sport);
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
   pr_info ("daddr = %x\n", daddr);
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
