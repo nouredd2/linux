@@ -33,6 +33,11 @@ static u8 tcp_challenge_secret[TCPCH_KEY_SIZE] __read_mostly;
 
 extern void get_random_bytes (void *buf, int nbytes);
 
+static void __generate_random_key_once (void)
+{
+  net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
+}
+
 /* tcpch_alloc_challenge */
 struct tcpch_challenge *tcpch_alloc_challenge (u32 mts, u8 mlen,
     u8 mnz, u8 mndiff)
@@ -412,7 +417,7 @@ struct tcpch_challenge *__generate_challenge (const struct inet_request_sock *ir
   __be16 sport = ireq->ir_rmt_port;
 
   /* make sure the key is generated */
-  net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
+  __generate_random_key_once ();
 
   pr_info ("Generation timestamp = %x\n", ts);
 
@@ -540,7 +545,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
     }
 
   /* always make sure key is generated */
-  net_get_random_once (tcp_challenge_secret, TCPCH_KEY_SIZE);
+  __generate_random_key_once ();
 
   ts = sol->ts;
 
