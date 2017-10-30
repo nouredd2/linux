@@ -6652,6 +6652,7 @@ struct sock *challenge_v4_check (struct sock *sk,
   struct rtable *rt;
   __u8 rcv_wscale;
   struct flowi4 fl4;
+  u32 tsoff;
 
   if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
     goto out;
@@ -6680,18 +6681,14 @@ struct sock *challenge_v4_check (struct sock *sk,
   __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
   pr_info ("Solution verification succeeded!\n");
 
-  /* shorting this for debugging purposes */
-  goto out;
-
-  /*
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
     tsoff = secure_tcp_ts_off(sock_net(sk),
         ip_hdr(skb)->daddr,
         ip_hdr(skb)->saddr);
     tcp_opt.rcv_tsecr -= tsoff;
   }
-  */
 
+  pr_info ("Building the new socket\n");
   ret = NULL;
   req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
   if (!req)
