@@ -11,6 +11,8 @@
  *
  */
 
+#define pr_fmt(fmt) "TCP: " fmt
+
 #include <linux/err.h>
 #include <linux/time.h>
 #include <linux/slab.h>
@@ -114,6 +116,7 @@ struct tcpch_solution_item *tcpch_alloc_solution_item ()
 /* tcpch_free_challenge */
 void tcpch_free_challenge (struct tcpch_challenge *chlg)
 {
+  pr_info ("Inside tcpch_free_challenge\n");
   if (chlg == 0)
     {
       return;
@@ -159,6 +162,7 @@ void tcpch_free_solution (struct tcpch_solution_head *head)
 {
   struct tcpch_solution_item *itr, *tmp;
 
+  pr_info ("Inside tcpch_free_solution\n");
   list_for_each_entry_safe (itr, tmp, &(head->head), list)
     {
       /* remove the iterator from the list */
@@ -234,7 +238,6 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
       return 0;
 
   cmp = memcmp (xbuf, ybuf, len/8);
-  pr_info ("memcmp returned %x\n", cmp);
 
   rem = len%8;
   if (rem > 0)
@@ -243,17 +246,10 @@ static int __tcpch_compare_bits (u8 *xbuf, u8 *ybuf, u16 len)
       cx = xbuf[idx];
       cy = ybuf[idx];
 
-      pr_info ("cx = %x\n", cx);
-      pr_info ("cy = %x\n", cy);
-
       cx = cx >> (8-rem);
       cy = cy >> (8-rem);
 
-      pr_info ("cx = %x\n", cx);
-      pr_info ("cy = %x\n", cy);
-
       if (cx != cy) {
-        pr_info ("failed the comparison of the last byte\n");
         return -1;
       }
     }
@@ -290,7 +286,6 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
 
   /* get the timestamp in microsec */
   ts = chlg->ts;
-  pr_info ("Solution timestamp = %x\n", ts);
 
   /* create the hash algorithm */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
@@ -334,13 +329,11 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
     }
 
   head = tcpch_alloc_solution_head (ts, chlg->ndiff, chlg->nz, chlg->len);
-  pr_info ("Starting the solution procedure!\n");
   for (i=0; i < chlg->nz; ++i)
     {
       item = 0;
       found = 0;
       do {
-        pr_info ("Starting new section of solving!\n");
         err = crypto_shash_init (sdesc);
         if (err < 0)
           {
@@ -370,17 +363,12 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
         found = (__tcpch_compare_bits (trial, xbuf, chlg->ndiff) == 0);
       } while (found == 0);
 
-      pr_info ("found a solution to the %d'th challenge\n", i);
-
       /* allocate a solution struct and add it the list */
       item = tcpch_alloc_solution_item ();
       item->sbuf = (u8 *)kmalloc (xlen, GFP_KERNEL);
       memcpy (item->sbuf, zbuf, xlen);
 
       __add_solution_item (head, item);
-
-      pr_info ("inserted solution, moving on to the next!\n");
-      pr_info ("solution is: %x %x %x %x \n", item->sbuf[0], item->sbuf[1], item->sbuf[2], item->sbuf[3]);
     }
 
   kfree (trial);
@@ -430,8 +418,6 @@ struct tcpch_challenge *__generate_challenge (const struct inet_request_sock *ir
   /* make sure the key is generated */
   __generate_random_key_once ();
 
-  pr_info ("Generation timestamp = %x\n", ts);
-
   /* create the hash algorithm */
   alg = crypto_alloc_shash ("sha256", CRYPTO_ALG_TYPE_DIGEST,
       CRYPTO_ALG_TYPE_HASH_MASK);
@@ -456,15 +442,10 @@ struct tcpch_challenge *__generate_challenge (const struct inet_request_sock *ir
 
   /* create key || saddr || sport || daddr || dport || ts */
   err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
-  pr_info ("saddr = %x\n", saddr);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
-  pr_info ("sport = %x\n", sport);
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
-  pr_info ("daddr = %x\n", daddr);
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
-  pr_info ("dport = %x\n", dport);
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
-  pr_info ("ts = %x\n", ts);
   err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   digestsize = crypto_shash_digestsize (alg);
@@ -492,10 +473,6 @@ struct tcpch_challenge *__generate_challenge (const struct inet_request_sock *ir
 
   /* grab the bytes */
   memcpy (xbuf, digest, xlen);
-
-  pr_info ("Generated the preimage: ");
-  pr_info ("The generated x is %x %x %x %x\n", xbuf[0],
-      xbuf[1], xbuf[2], xbuf[3]);
 
   /* Done just set up the struct  */
   chlg = tcpch_alloc_challenge (ts, len, nz, diff);
@@ -594,15 +571,10 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 
   /* create key || saddr || sport || daddr || dport || ts */
   err = crypto_shash_update (sdesc, (u8 *) tcp_challenge_secret, TCPCH_KEY_SIZE);
-  pr_info ("saddr = %x\n", saddr);
   err = crypto_shash_update (sdesc, (u8 *) &saddr, sizeof (__be32));
-  pr_info ("sport = %x\n", sport);
   err = crypto_shash_update (sdesc, (u8 *) &sport, sizeof (__be16));
-  pr_info ("daddr = %x\n", daddr);
   err = crypto_shash_update (sdesc, (u8 *) &daddr, sizeof (__be32));
-  pr_info ("dport = %x\n", dport);
   err = crypto_shash_update (sdesc, (u8 *) &dport, sizeof (__be16));
-  pr_info ("ts = %x\n", ts);
   err = crypto_shash_update (sdesc, (u8 *) &ts, sizeof (u32));
 
   dsize = crypto_shash_digestsize (alg);
@@ -625,9 +597,6 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
     }
   memcpy (xbuf, digest, xlen);
 
-  pr_info ("The generated x is %x %x %x %x\n", xbuf[0],
-      xbuf[1], xbuf[2], xbuf[3]);
-
   /* now we have xbuf, the real work starts here! */
   i = 1;
   j = 0;
@@ -639,9 +608,6 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
           pr_info ("[tcp_ch:] Failed to initialize sha256\n");
           goto out_free_all; 
         }
-
-      pr_info ("The received solution is %x %x %x %x\n", itr->sbuf[0],
-          itr->sbuf[1], itr->sbuf[2], itr->sbuf[3]);
 
       /* build x || i || z */
       err = crypto_shash_update (sdesc, xbuf, xlen);
