@@ -881,13 +881,12 @@ static unsigned int tcp_synack_options(const struct sock *sk,
     if (likely(ireq->tstamp_ok))
         ch_ts = tcp_skb_timestamp(skb) + tcp_rsk(req)->ts_off;
 
-    pr_info ("trying to generate a new challenge\n");
     chlg = tcpch_generate_challenge (skb, ireq, net->ipv4.sysctl_tcp_challenge_len,
             net->ipv4.sysctl_tcp_challenge_nz,
             net->ipv4.sysctl_tcp_challenge_diff,
             ch_ts);
     chlg->opt_ts = ireq->tstamp_ok;
-    pr_info ("Generated new challenge!\n");
+    pr_debug ("Generated new challenge!\n");
 
     if ( unlikely (IS_ERR(chlg)) ) {
       pr_debug ("Failed to initialize challenge.\n");
@@ -1277,18 +1276,16 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	else
 #ifdef CONFIG_SYN_CHALLENGE
   if (unlikely(tp->sol && tp->saw_challenge)) {
-    pr_info ("Just before entering the tcp_ack_solution_options call!\n");
     tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
                 &md5);
     tp->saw_challenge = 0;
 
-    pr_info ("tcp_options_size is %d\n", tcp_options_size);
+    pr_debug ("tcp_options_size is %d\n", tcp_options_size);
   }
   else
 #endif
 		tcp_options_size = tcp_established_options(sk, skb, &opts,
 							   &md5);
-  pr_info ("tcp_options_size is %d\n", tcp_options_size);
 	tcp_header_size = tcp_options_size + sizeof(struct tcphdr);
 
 	/* if no packet is in qdisc/device queue, then allow XPS to select

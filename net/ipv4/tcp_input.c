@@ -6711,7 +6711,6 @@ struct sock *challenge_v4_check (struct sock *sk,
     tsoff = 0;
   }
 
-  pr_info ("Building the new socket\n");
   ret = NULL;
   req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
   if (!req)
