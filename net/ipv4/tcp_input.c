@@ -5878,15 +5878,15 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 #ifdef CONFIG_SYN_CHALLENGE
     if (tp->rx_opt.chlg)
       {
-        pr_info ("SYNACK packet contains a challenge!\n");
+        pr_debug ("SYNACK packet contains a challenge!\n");
         sol = tcpch_solve_challenge (tp->rx_opt.chlg);
         if (IS_ERR(sol))
           {
-            pr_info ("Could not build solution!\n");
+            pr_err ("Could not build solution!\n");
             sol = 0;
           }
         else
-            pr_info ("Produced solution for SYNACK challenge!\n");
+            pr_debug ("Produced solution for SYNACK challenge!\n");
 
         /* now check if the socket already holds a solution and clear it
         */
@@ -5981,7 +5981,6 @@ discard:
 			tcp_drop(sk, skb);
 			return 0;
 		} else {
-			pr_info ("I am exiting correctly\n");
 			tcp_send_ack_sol (sk, tp->sol);
 		}
 		return -1;
@@ -6685,10 +6684,10 @@ struct sock *challenge_v4_check (struct sock *sk,
       goto out;
     }
 
-  pr_info ("Obtained solution to the presented challenge!\n");
+  pr_debug ("Obtained solution to the presented challenge!\n");
   if (! tcpch_verify_solution (sk, skb, tcp_opt.sol))
     {
-      pr_info ("Solution verification failed!\n");
+      pr_debug ("Solution verification failed!\n");
       __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
       tcpch_free_solution (tcp_opt.sol);
       tcp_opt.sol = 0;
@@ -6696,7 +6695,7 @@ struct sock *challenge_v4_check (struct sock *sk,
     }
 
   __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
-  pr_info ("Solution verification succeeded!\n");
+  pr_debug ("Solution verification succeeded!\n");
 
   /* make sure to remove the space occupied by the solution */
   tcpch_free_solution (tcp_opt.sol);

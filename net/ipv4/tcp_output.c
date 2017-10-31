@@ -3866,7 +3866,7 @@ void tcp_send_ack_sol(struct sock *sk, struct tcpch_solution_head *sol)
 	if (!sol)
 		return tcp_send_ack(sk);
 	
-	pr_info ("Sending ACK packet with solution in it!\n");
+	pr_debug ("Sending ACK packet with solution in it!\n");
 
 	/* If we have been reset, we may not send again. */
 	if (sk->sk_state == TCP_CLOSE)
