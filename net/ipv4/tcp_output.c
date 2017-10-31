@@ -3496,6 +3496,15 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	rcu_read_unlock();
 #endif
 
+#ifdef CONFIG_SYN_CHALLENGE
+  /* free up the create challenge since it is no longer needed */
+  if (opts.chlg)
+    {
+      tcpch_free_challenge (opts.chlg);
+      opts.chlg = 0;
+    }
+#endif
+
 	/* Do not fool tcpdump (if any), clean our debris */
 	skb->tstamp = 0;
 	return skb;

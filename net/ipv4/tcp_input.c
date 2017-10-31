@@ -5873,7 +5873,8 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
             pr_info ("Could not build solution!\n");
             sol = 0;
           }
-        pr_info ("Produced solution for SYNACK challenge!\n");
+        else
+            pr_info ("Produced solution for SYNACK challenge!\n");
 
         /* now check if the socket already holds a solution and clear it
         */
@@ -5888,6 +5889,10 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
             TCPOLEN_MSS;
           tp->tcp_header_len = tcp_header_len;
         }
+
+        /* free the space occupied by the challenge */
+        tcpch_free_challenge (tp->rx_opt.chlg);
+        tp->rx_opt.chlg = 0;
       }
 #endif
 
@@ -6673,11 +6678,17 @@ struct sock *challenge_v4_check (struct sock *sk,
     {
       pr_info ("Solution verification failed!\n");
       __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
+      tcpch_free_solution (tcp_opt.sol);
+      tcp_opt.sol = 0;
       goto out;
     }
 
   __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
   pr_info ("Solution verification succeeded!\n");
+
+  /* make sure to remove the space occupied by the solution */
+  tcpch_free_solution (tcp_opt.sol);
+  tcp_opt.sol = 0;
 
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
     tsoff = secure_tcp_ts_off(sock_net(sk),
