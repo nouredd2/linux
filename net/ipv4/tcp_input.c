@@ -3788,21 +3788,26 @@ static inline void tcp_parse_solution (const struct net *net,
   /* make sure the solution pointer is 0 */
   opt_rx->sol = 0;
 
-  /* make sure first that we have all parameters */
-  if (len < 2 + 4 + (net->ipv4.sysctl_tcp_challenge_nz * len_of_subc))
-    {
-      pr_debug ("[tcpch:] Incorrect value for option length in tcp solution\n");
-      return;
-    }
-
-  /* get the parameters */
-  ts = get_unaligned_be32 (ptr);
-  ptr += 4;
-
+  /* check if should use the timestamp from the received options.
+   * In this case we should use the rcv_tsecr value since it would
+   * be the one that the client has echoed back to us in the ACK 
+   * packet.
+   */
+  if (opt_rx->saw_tstamp)
+      ts = opt_rx->rcv_tsecr;
+  else {
+    /* get the parameters */
+    ts = get_unaligned_be32 (ptr);
+    ptr += 4;
+  }
+  pr_debug ("Received timestamp on the solution: %x\n", ts);
 
   /* now read each sub-challenge solution and parse it */
   head = tcpch_alloc_solution_head (ts, net->ipv4.sysctl_tcp_challenge_diff,
           net->ipv4.sysctl_tcp_challenge_nz, net->ipv4.sysctl_tcp_challenge_len);
+  if (opt_rx->saw_tstamp)
+      head->opt_ts = true;
+
   for (i=0; i < net->ipv4.sysctl_tcp_challenge_nz; ++i)
     {
       /* allocate a solution */
@@ -3823,6 +3828,13 @@ static inline void tcp_parse_solution (const struct net *net,
               tcpch_free_solution (head);
           return;
         }
+
+      /* if the client sends us less than the number of challenges we 
+       * needed, then it wouldn't matter since this is only reading 
+       * and the verification of the solution would fail. Because no 
+       * writes occur out of space, this means that we are just reading 
+       * garbage and verifying garbage, which is then also garbage.
+       */
       memcpy(item->sbuf, ptr, len_of_subc);
       ptr += len_of_subc;
 

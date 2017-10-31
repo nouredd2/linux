@@ -51,6 +51,8 @@ struct tcpch_solution_head {
   u8             nz;         /* the number of subpuzzles             */
   u8             diff;       /* the number of diffuclty bits         */
   u8             len;        /* the length of (x+z) in the puzzles   */
+  bool           opt_ts;     /* falg to check wether to use the
+                                timestamp from the options field     */
 
   struct list_head  head;     /* the list of sub-solutions contained  */
 };

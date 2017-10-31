@@ -469,9 +469,6 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
   u8 *p8;
   u16 *p16;
   u32 *p32;
-
-  int i;
-  u8 *tmp;
 #endif
 
 	u16 options = opts->options;	/* mungable copy */
@@ -568,17 +565,21 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
     }
   else if (OPTION_SYN_SOLUTION & options)
     {
-      pr_info ("Writing solution to packet options!\n");
+      pr_debug ("Writing solution to packet options!\n");
       head = opts->sol;
       /* calculate the length of the option field
        * 2 for the first two bytes of the option
        * 8 for the timestamp
        * nz * l/16 for the solutions
        */
-      syn_challenge_opt_len = 2 + 4 + (head->nz * (head->len/16));
+      if (options & OPTION_TS)
+          syn_challenge_opt_len = 2 + (head->nz * (head->len/16));
+      else
+          syn_challenge_opt_len = 2 + 4 + (head->nz * (head->len/16));
+
       if (syn_challenge_opt_len > 255)
         {
-          pr_info ("Length of solution not allowed!\n");
+          pr_err ("Length of solution not allowed!\n");
           return;
         }
 
@@ -587,20 +588,23 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
       *p16++ = htons (((u16)(253 << 8)) | syn_challenge_opt_len);
 
       /* throw in the timestamp */
-      p32 = (u32 *)p16;
-      *p32++ = htonl (head->ts);
+      if (options & OPTION_TS)
+        {
+          /* to make sure things are consistent when reading the next one */
+          p32 = (u32 *)p16;
+        }
+      else 
+        {
+          p32 = (u32 *)p16;
+          *p32++ = htonl (head->ts);
+        }
 
       /* now the solutions */
       p8 = (u8 *)p32;
       list_for_each_entry (item, &(head->head), list)
         {
-          /* memcpy (p8, item->sbuf, (head->len/16));*/
-          tmp = item->sbuf;
-          for (i=0; i < (head->len/16); ++i)
-            {
-              *p8++ = *(tmp++);
-            }
-          /* p8 += (head->len/16);*/
+          memcpy (p8, item->sbuf, (head->len/16));
+          p8 += (head->len/16);
         }
 
       /* how to do the alignment */
@@ -728,8 +732,11 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
       opts->options |= OPTION_SYN_SOLUTION;
       opts->sol = tp->sol;
       opts->ctype = SYN_SOLUTION;
+
+      /* check if we will be using the timestamp options */
+      if (opts->options & OPTION_TS)
+          opts->sol->opt_ts = true;
       blen = tcpch_get_solution_length (tp->sol);
-      pr_info ("Obtained blen = %d\n", blen);
       remaining -= blen;
     }
 

@@ -86,6 +86,7 @@ struct tcpch_solution_head *tcpch_alloc_solution_head (u32 mts, u8 diff, u8 mnz,
       solution->diff = diff;
       solution->nz = mnz;
       solution->len = mlen;
+      solution->opt_ts = false;
       INIT_LIST_HEAD (&(solution->head));
     }
 
@@ -695,7 +696,6 @@ u32 tcpch_get_length (struct tcpch_challenge *chlg)
 
   /* align to 32 bits */
   need = (need + 3) & ~3U;
-
   return need;
 }
 EXPORT_SYMBOL_GPL (tcpch_get_length);
@@ -707,7 +707,10 @@ u32 tcpch_get_solution_length (struct tcpch_solution_head *sol)
       return 0;
 
   /* calculate how much space do we need in bytes */
-  need = 4 /* for timestamp */ + sol->nz * (sol->len / 16);
+  if (sol->opt_ts)
+      need = sol->nz * (sol->len / 16);
+  else
+      need = 4 /* for timestamp */ + sol->nz * (sol->len / 16);
 
   /* add the option bytes */
   need += 2;
