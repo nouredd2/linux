@@ -6527,6 +6527,9 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
       want_challenge = want_cookie? (net->ipv4.sysctl_tcp_challenges > 0):false;
   }
 
+  if (want_challenge)
+      pr_info ("Turning on SYN challenges!\n");
+
 	if (sk_acceptq_is_full(sk)) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
 		goto drop;
