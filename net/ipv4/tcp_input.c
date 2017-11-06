@@ -6548,7 +6548,8 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
   else
       tcp_rsk(req)->ctype = SYN_NONE;
 
-	tcp_clear_options(&tmp_opt);
+	/*tcp_clear_options(&tmp_opt);*/
+  memset (&tmp_opt, 0, sizeof(struct tcp_options_received));
 	tmp_opt.mss_clamp = af_ops->mss_clamp;
 	tmp_opt.user_mss  = tp->rx_opt.user_mss;
 	tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0,
