@@ -6479,11 +6479,12 @@ static bool tcp_syn_flood_action(const struct sock *sk,
 		want_cookie = true;
 		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCOOKIES);
 	} else
-#elif defined CONFIG_SYN_CHALLENGE
-  if (net->ipv4.sysctl_tcp_synchallenges) {
+#endif
+#ifdef CONFIG_SYN_CHALLENGE
+  if (net->ipv4.sysctl_tcp_challenges) {
       msg = "Sending challenges";
       want_cookie = true;
-      __NET_INC_STATES(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCHALLENGES);
+      __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCHALLENGES);
   } else
 #endif
 		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDROP);
