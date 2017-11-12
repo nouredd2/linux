@@ -1432,7 +1432,11 @@ static struct sock *tcp_v4_cookie_check(struct sock *sk, struct sk_buff *skb)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 #ifdef CONFIG_SYN_CHALLENGE
-  if (!th->syn) {
+  struct net *net = sock_net(sk);
+  /* SYN challenges take precendes only when enabled, otherwise default to cookie
+   * behavior. Note that we wouldn't reach here unless sysctl_tcp_cookies is enabled
+   */
+  if ((!th->syn) && (net->ipv4.sysctl_tcp_challenges > 0)) {
     sk = challenge_v4_check (sk, skb);
     goto out;
   }
