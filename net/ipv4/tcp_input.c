@@ -3906,6 +3906,22 @@ void tcp_parse_options(const struct net *net,
 					}
 					opt_rx->snd_wscale = snd_wscale;
 				}
+#ifdef CONFIG_SYN_CHALLENGE
+        else if (opsize == TCPOLEN_WINDOW && th->ack &&
+                 net->ipv4.sysctl_tcp_challenges && 
+                 net->ipv4.sysctl_tcp_window_scaling) {
+          __u8 snd_wscale = *(__u8*)ptr;
+          opt_rx->wscale_ok = 1;
+          if (snd_wscale > TCP_MAX_WSCALE) {
+            net_info_ratelimited("%s: Illegal window scaling value %d > %u received\n",
+                __func__,
+                snd_wscale,
+                TCP_MAX_WSCALE);
+            snd_wscale = TCP_MAX_WSCALE;
+          }
+					opt_rx->snd_wscale = snd_wscale;
+        }
+#endif
 				break;
 			case TCPOPT_TIMESTAMP:
 				if ((opsize == TCPOLEN_TIMESTAMP) &&
@@ -3922,8 +3938,15 @@ void tcp_parse_options(const struct net *net,
 					opt_rx->sack_ok = TCP_SACK_SEEN;
 					tcp_sack_reset(opt_rx);
 				}
+#ifdef CONFIG_SYN_CHALLENGE
+        else if (opsize == TCPOLEN_SACK_PERM && th->ack &&
+            net->ipv4.sysctl_tcp_challenges &&
+            net->ipv4.sysctl_tcp_sack) {
+          opt_rx->sack_ok = TCP_SACK_SEEN;
+          tcp_sack_reset(opt_rx);
+        }
+#endif
 				break;
-
 			case TCPOPT_SACK:
 				if ((opsize >= (TCPOLEN_SACK_BASE + TCPOLEN_SACK_PERBLOCK)) &&
 				   !((opsize - TCPOLEN_SACK_BASE) % TCPOLEN_SACK_PERBLOCK) &&
@@ -6451,7 +6474,7 @@ static bool tcp_syn_flood_action(const struct sock *sk,
 	struct net *net = sock_net(sk);
 
 #ifdef CONFIG_SYN_COOKIES
-	if (net->ipv4.sysctl_tcp_syncookies) {
+	if (net->ipv4.sysctl_tcp_syncookies && !net->ipv4.sysctl_tcp_challenges) {
 		msg = "Sending cookies";
 		want_cookie = true;
 		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCOOKIES);
@@ -6527,8 +6550,6 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
       want_challenge = want_cookie? (net->ipv4.sysctl_tcp_challenges > 0):false;
   }
 
-  if (want_challenge)
-      pr_info ("Turning on SYN challenges!\n");
 
 	if (sk_acceptq_is_full(sk)) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
@@ -6670,8 +6691,6 @@ struct sock *challenge_v4_check (struct sock *sk,
   int mss = 0;
   struct rtable *rt;
   struct flowi4 fl4;
-  u32 tsoff;
-  __u8 rcv_wscale;
 
   if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
     goto out;
@@ -6706,6 +6725,7 @@ struct sock *challenge_v4_check (struct sock *sk,
   tcpch_free_solution (tcp_opt.sol);
   tcp_opt.sol = 0;
 
+  /*
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
     tsoff = secure_tcp_ts_off(sock_net(sk),
         ip_hdr(skb)->daddr,
@@ -6714,6 +6734,7 @@ struct sock *challenge_v4_check (struct sock *sk,
   } else {
     tsoff = 0;
   }
+  */
 
   ret = NULL;
   req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
@@ -6726,7 +6747,7 @@ struct sock *challenge_v4_check (struct sock *sk,
   treq->rcv_isn = ntohl(th->seq) - 1;
   treq->snt_isn = ntohl(th->ack_seq) - 1;
   treq->txhash = net_tx_rndhash();
-  req->mss = mss;
+  req->mss = tcp_opt.mss_clamp;
   ireq->ir_num = ntohs(th->dest);
   ireq->ir_rmt_port = th->source;
   sk_rcv_saddr_set (req_to_sk(req), ip_hdr(skb)->daddr);
@@ -6771,14 +6792,8 @@ struct sock *challenge_v4_check (struct sock *sk,
 
 	/* Try to redo what tcp_v4_send_synack did. */
 	req->rsk_window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
-
-  tcp_select_initial_window(tcp_full_space(sk), req->mss,
-      &req->rsk_rcv_wnd, &req->rsk_window_clamp,
-      ireq->wscale_ok, &rcv_wscale,
-      dst_metric(&rt->dst, RTAX_INITRWND));
-
-	ireq->rcv_wscale  = rcv_wscale; 
-	ireq->ecn_ok = cookie_ecn_ok(&tcp_opt, sock_net(sk), &rt->dst);
+  tcp_ecn_create_request (req, skb, sk, &rt->dst);
+  tcp_openreq_init_rwin (req, sk, &rt->dst);
 
   /* use the same syncookies.c routine */
   ret = tcp_get_cookie_sock(sk, skb, req, &rt->dst, treq->ts_off);
