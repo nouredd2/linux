@@ -3895,8 +3895,8 @@ void tcp_send_ack_sol(struct sock *sk, struct tcpch_solution_head *sol)
 	/* We do not want pure acks influencing TCP Small Queues or fq/pacing
 	 * too much.
 	 * SKB_TRUESIZE(max(1 .. 66, MAX_TCP_HEADER)) is unfortunately ~784
-	 */
 	skb_set_tcp_pure_ack(buff);
+	 */
 
 	/* Send it off, this clears delayed acks for us. */
 	tcp_transmit_skb(sk, buff, 0, (__force gfp_t)0);
