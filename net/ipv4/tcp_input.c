@@ -6752,9 +6752,7 @@ struct sock *challenge_v4_check (struct sock *sk,
 
   ireq = inet_rsk(req);
   treq = tcp_rsk(req);
-	treq->ts_off = secure_tcp_ts_off(sock_net(sk),
-      ip_hdr(skb)->daddr,
-      ip_hdr(skb)->saddr);
+	treq->ts_off = tsoff;
   treq->rcv_isn = ntohl(th->seq) - 1;
   treq->snt_isn = ntohl(th->ack_seq) - 1;
   treq->txhash = net_tx_rndhash();
