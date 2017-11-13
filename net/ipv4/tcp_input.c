@@ -6589,7 +6589,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0,
 			  want_cookie ? NULL : &foc);
 
-	if (want_cookie && !tmp_opt.saw_tstamp)
+	if (want_cookie && !tmp_opt.saw_tstamp &&!want_challenge)
 		tcp_clear_options(&tmp_opt);
 
 	tmp_opt.tstamp_ok = tmp_opt.saw_tstamp;
@@ -6697,13 +6697,13 @@ struct sock *challenge_v4_check (struct sock *sk,
   struct tcp_options_received tcp_opt;
   struct inet_request_sock *ireq;
   struct tcp_request_sock *treq;
-  struct tcp_sock *tp = tcp_sk(sk);
   const struct tcphdr *th = tcp_hdr(skb);
   struct sock *ret = sk;
   struct request_sock *req;
   int mss = 0;
   struct rtable *rt;
   struct flowi4 fl4;
+  u32 tsoff = 0;
 
   if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
     goto out;
@@ -6738,16 +6738,12 @@ struct sock *challenge_v4_check (struct sock *sk,
   tcpch_free_solution (tcp_opt.sol);
   tcp_opt.sol = 0;
 
-  /*
   if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
     tsoff = secure_tcp_ts_off(sock_net(sk),
         ip_hdr(skb)->daddr,
         ip_hdr(skb)->saddr);
     tcp_opt.rcv_tsecr -= tsoff;
-  } else {
-    tsoff = 0;
   }
-  */
 
   ret = NULL;
   req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
@@ -6804,9 +6800,13 @@ struct sock *challenge_v4_check (struct sock *sk,
 	}
 
 	/* Try to redo what tcp_v4_send_synack did. */
-	req->rsk_window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
-  tcp_ecn_create_request (req, skb, sk, &rt->dst);
+
+  /* If using tcp_openreq_init_rwin, then these routines are done there
+	 * req->rsk_window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
+   * tcp_ecn_create_request (req, skb, sk, &rt->dst); 
+  */
   tcp_openreq_init_rwin (req, sk, &rt->dst);
+	ireq->ecn_ok = cookie_ecn_ok(&tcp_opt, sock_net(sk), &rt->dst);
 
   /* use the same syncookies.c routine */
   ret = tcp_get_cookie_sock(sk, skb, req, &rt->dst, treq->ts_off);
