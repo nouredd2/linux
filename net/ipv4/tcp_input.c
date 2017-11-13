@@ -3891,6 +3891,18 @@ void tcp_parse_options(const struct net *net,
 						opt_rx->mss_clamp = in_mss;
 					}
 				}
+#ifdef CONFIG_SYN_CHALLENGE
+        else if (opsize == TCPOLEN_MSS && th->ack &&
+              net->ipv4.sysctl_tcp_challenges) {
+          u16 in_mss = get_unaligned_be16(ptr);
+          if (in_mss) {
+            if (opt_rx->user_mss &&
+                opt_rx->user_mss < in_mss)
+                in_mss = opt_rx->user_mss;
+            opt_rx->mss_clamp = in_mss;
+          }
+        }
+#endif
 				break;
 			case TCPOPT_WINDOW:
 				if (opsize == TCPOLEN_WINDOW && th->syn &&
