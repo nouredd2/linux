@@ -6564,7 +6564,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
   }
 
 
-	if (sk_acceptq_is_full(sk)) {
+	if (sk_acceptq_is_full(sk) && !want_challenge) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
 		goto drop;
 	}
@@ -6704,6 +6704,13 @@ struct sock *challenge_v4_check (struct sock *sk,
   struct rtable *rt;
   struct flowi4 fl4;
   u32 tsoff = 0;
+
+  /* first check if the accept queue if full */
+  if (sk_acceptq_is_full(sk)) {
+    NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
+    tcp_listendrop (sk);
+    return 0;
+  }
 
   if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
     goto out;
