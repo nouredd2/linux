@@ -3784,9 +3784,36 @@ static inline void tcp_parse_solution (const struct net *net,
   u32 ts;
   u8 len_of_subc = net->ipv4.sysctl_tcp_challenge_len / 16;
   u8 i;
+  u16 in_mss;
+  u8 snd_wscale;
 
   /* make sure the solution pointer is 0 */
   opt_rx->sol = 0;
+
+  /* first read the mss value from the solution */
+  in_mss = get_unaligned_be16(ptr);
+  if (in_mss) {
+    if (opt_rx->user_mss &&
+        opt_rx->user_mss < in_mss)
+      in_mss = opt_rx->user_mss;
+    opt_rx->mss_clamp = in_mss;
+  }
+  ptr += 2;
+
+  /* now read the window scaling option */
+  if (net->ipv4.sysctl_tcp_window_scaling) {
+    snd_wscale = *(__u8*)ptr;
+    opt_rx->wscale_ok = 1;
+    if (snd_wscale > TCP_MAX_WSCALE) {
+      net_info_ratelimited("%s: Illegal window scaling value %d > %u received\n",
+          __func__,
+          snd_wscale,
+          TCP_MAX_WSCALE);
+      snd_wscale = TCP_MAX_WSCALE;
+    }
+    opt_rx->snd_wscale = snd_wscale;
+  }
+  ptr++;
 
   /* check if should use the timestamp from the received options.
    * In this case we should use the rcv_tsecr value since it would
@@ -3794,7 +3821,7 @@ static inline void tcp_parse_solution (const struct net *net,
    * packet.
    */
   if (opt_rx->saw_tstamp)
-      ts = opt_rx->rcv_tsecr;
+    ts = opt_rx->rcv_tsecr;
   else {
     /* get the parameters */
     ts = get_unaligned_be32 (ptr);

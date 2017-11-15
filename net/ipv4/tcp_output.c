@@ -481,7 +481,8 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 		ptr += 4;
 	}
 
-	if (unlikely(opts->mss)) {
+  /* send the mss when there is not solution being sent */
+	if (unlikely(opts->mss && !(options & OPTION_SYN_SOLUTION))) {
 		*ptr++ = htonl((TCPOPT_MSS << 24) |
 			       (TCPOLEN_MSS << 16) |
 			       opts->mss);
@@ -569,13 +570,14 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
       head = opts->sol;
       /* calculate the length of the option field
        * 2 for the first two bytes of the option
+       * 3 for the mss and the window scale
        * 8 for the timestamp
        * nz * l/16 for the solutions
        */
       if (options & OPTION_TS)
-          syn_challenge_opt_len = 2 + (head->nz * (head->len/16));
+          syn_challenge_opt_len = 5 + (head->nz * (head->len/16));
       else
-          syn_challenge_opt_len = 2 + 4 + (head->nz * (head->len/16));
+          syn_challenge_opt_len = 5 + 4 + (head->nz * (head->len/16));
 
       if (syn_challenge_opt_len > 255)
         {
@@ -586,6 +588,14 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
       /* put in the option header */
       p16 = (u16 *)ptr;
       *p16++ = htons (((u16)(253 << 8)) | syn_challenge_opt_len);
+
+      /* add in the MSS and the window scaling option */
+      *p16++ = htons (opts->mss);
+      
+      /* add the window scaling option */
+      p8 = (u8 *)p16;
+      *p8++ = opts->ws;
+      p16 = (u16 *)p8;
 
       /* throw in the timestamp */
       if (options & OPTION_TS)
@@ -716,7 +726,7 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 #endif
 
 	opts->mss = tcp_advertise_mss(sk);
-	remaining -= TCPOLEN_MSS_ALIGNED;
+	/* remaining -= TCPOLEN_MSS_ALIGNED; */
 
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps && !*md5) &&
         remaining >= TCPOLEN_TSTAMP_ALIGNED) {
@@ -727,25 +737,26 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 	}
 
   /* first check for the solution and make sure we set it out */
-  if (likely(tp->sol))
-    {
-      opts->options |= OPTION_SYN_SOLUTION;
-      opts->sol = tp->sol;
-      opts->ctype = SYN_SOLUTION;
+  if (likely(tp->sol)) {
+    opts->options |= OPTION_SYN_SOLUTION;
+    opts->sol = tp->sol;
+    opts->ctype = SYN_SOLUTION;
 
-      /* check if we will be using the timestamp options */
-      if (opts->options & OPTION_TS)
-          opts->sol->opt_ts = true;
-      blen = tcpch_get_solution_length (tp->sol);
-      remaining -= blen;
-    }
+    /* check if we will be using the timestamp options */
+    if (opts->options & OPTION_TS)
+        opts->sol->opt_ts = true;
+    blen = tcpch_get_solution_length (tp->sol);
+    remaining -= blen;
+  }
 
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling) &&
         remaining >= TCPOLEN_WSCALE_ALIGNED) {
 		opts->ws = tp->rx_opt.rcv_wscale;
-		opts->options |= OPTION_WSCALE;
-		remaining -= TCPOLEN_WSCALE_ALIGNED;
-	}
+		/*opts->options |= OPTION_WSCALE;
+		remaining -= TCPOLEN_WSCALE_ALIGNED; */
+	} else 
+    opts->ws = 0;
+
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack) &&
         remaining >= TCPOLEN_SACKPERM_ALIGNED) {
 		opts->options |= OPTION_SACK_ADVERTISE;
@@ -891,7 +902,10 @@ static unsigned int tcp_synack_options(const struct sock *sk,
     if ( unlikely (IS_ERR(chlg)) ) {
       pr_debug ("Failed to initialize challenge.\n");
       return -1;
+    } else {
+      __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGESENT);
     }
+
     opts->options |= OPTION_SYN_CHALLENGE;
     opts->chlg = chlg;
     opts->ctype = SYN_CHALLENGE;

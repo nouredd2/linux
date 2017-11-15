@@ -715,6 +715,9 @@ u32 tcpch_get_solution_length (struct tcpch_solution_head *sol)
   /* add the option bytes */
   need += 2;
 
+  /* add the mss and wscale */
+  need += 2 + 1;
+
   /* align to 32 bits */
   need = (need + 3) & ~3U;
   return need;
