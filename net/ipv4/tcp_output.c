@@ -749,20 +749,18 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
     remaining -= blen;
   }
 
-	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling) &&
-        remaining >= TCPOLEN_WSCALE_ALIGNED) {
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling)) {
 		opts->ws = tp->rx_opt.rcv_wscale;
 		/*opts->options |= OPTION_WSCALE;
 		remaining -= TCPOLEN_WSCALE_ALIGNED; */
 	} else 
     opts->ws = 0;
 
-	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack) &&
-        remaining >= TCPOLEN_SACKPERM_ALIGNED) {
-		opts->options |= OPTION_SACK_ADVERTISE;
-		if (unlikely(!(OPTION_TS & opts->options)))
-			remaining -= TCPOLEN_SACKPERM_ALIGNED;
-	}
+  if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
+    opts->options |= OPTION_SACK_ADVERTISE;
+    if (unlikely(!(OPTION_TS & opts->options)))
+        remaining -= TCPOLEN_SACKPERM_ALIGNED;
+  }
 
 	return MAX_TCP_OPTION_SPACE - remaining;
 }
