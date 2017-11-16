@@ -1060,6 +1060,13 @@ static struct ctl_table ipv4_net_table[] = {
     .extra1       = &tcp_challenge_min_diff,
     .extra2       = &tcp_challenge_max_diff
   },
+  {
+    .procname     = "tcp_challenge_timeout",
+    .data         = &init_net.ipv4.sysctl_tcp_challenge_timeout,
+    .maxlen       = sizeof(int),
+    .mode         = 0644,
+    .proc_handler = proc_dointvec,
+  },
 #endif
 	{
 		.procname	= "tcp_reordering",

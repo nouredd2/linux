@@ -6731,13 +6731,8 @@ struct sock *challenge_v4_check (struct sock *sk,
   struct rtable *rt;
   struct flowi4 fl4;
   u32 tsoff = 0;
+  u32 ts_current = 0;
 
-  /* first check if the accept queue if full */
-  if (sk_acceptq_is_full(sk)) {
-    NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
-    tcp_listendrop (sk);
-    return 0;
-  }
 
   if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
     goto out;
@@ -6745,6 +6740,21 @@ struct sock *challenge_v4_check (struct sock *sk,
   /* parse the options from the packet */
   memset (&tcp_opt, 0, sizeof (tcp_opt));
   tcp_parse_options(sock_net(sk), skb, &tcp_opt, 0, NULL);
+
+  /* first check if the accept queue if full */
+  if (sk_acceptq_is_full(sk)) {
+    /* check if the ACK packet has expired and send a RST flag */
+    if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
+      ts_current = tcp_time_stamp_raw();
+      if ((ts_current - tcp_opt.rcv_tsecr) > 
+                sock_net(sk)->ipv4.sysctl_tcp_challenge_timeout)
+        tcp_request_sock_ops.send_reset (sk, skb);
+    } else {
+      NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
+      tcp_listendrop (sk);
+    }
+    return 0;
+  }
 
   if (tcp_opt.user_mss)
     mss = tcp_opt.user_mss;

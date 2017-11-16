@@ -2536,10 +2536,13 @@ static int __net_init tcp_sk_init(struct net *net)
 	net->ipv4.sysctl_tcp_syn_retries = TCP_SYN_RETRIES;
 	net->ipv4.sysctl_tcp_synack_retries = TCP_SYNACK_RETRIES;
 	net->ipv4.sysctl_tcp_syncookies = 1;
+#ifdef CONFIG_SYN_CHALLENGE
   net->ipv4.sysctl_tcp_challenges = 1; /* enable tcp challenges by default */
   net->ipv4.sysctl_tcp_challenge_nz = TCPCH_DEFAULT_NZ;
   net->ipv4.sysctl_tcp_challenge_diff = TCPCH_DEFAULT_NDIFF;
   net->ipv4.sysctl_tcp_challenge_len = TCPCH_DEFAULT_LEN;
+  net->ipv4.sysctl_tcp_challenge_timeout = TCPCH_DEFAULT_TO;
+#endif
 	net->ipv4.sysctl_tcp_reordering = TCP_FASTRETRANS_THRESH;
 	net->ipv4.sysctl_tcp_retries1 = TCP_RETR1;
 	net->ipv4.sysctl_tcp_retries2 = TCP_RETR2;
