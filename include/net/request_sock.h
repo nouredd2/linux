@@ -68,7 +68,7 @@ struct request_sock {
 	u32				secid;
 	u32				peer_secid;
 	//@TODO implement weighting algorithm
-	u32 			weight;//type?
+	u32				weight;
 };
 
 static inline struct request_sock *inet_reqsk(const struct sock *sk)
@@ -176,28 +176,44 @@ struct request_sock_queue {
 					     */
 };
 
-//make priority version of above struct 
-
+//make priority version of above struct
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+/* Let's use this neat little trick from C to avoid having to redefine things we
+ * don't really need to redefine
+ */
 struct priority_request_sock_queue{
-	spinlock_t rskq_lock;
-	u32 synflood_warned;
-	atomic_t qlen;
-	atomic_t young;
+	/* always keep this at the top */
+	struct request_sock_queue icsk_rskq;
 
-	unsigned max_size = 1024;
-	unsigned size = 1;
+	/* @TODO: Mohammad: Make this parametrizable through sysctl so we don't
+	 * have to recompile if we want to increase the size
+	 */
+	u32 max_size; /* = 1024; */
+	u32 size; /*  = 1; */
 	struct request_sock *queue[1024];
-	struct fastopen_queue fastopenq; 
-}
+};
+#endif
 
 void reqsk_queue_alloc(struct request_sock_queue *queue);
 
 void reqsk_fastopen_remove(struct sock *sk, struct request_sock *req,
 			   bool reset);
 
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+static inline struct priority_request_sock_queue
+*priority_req_queue(const struct request_sock_queue *queue)
+{
+	return (struct priority_request_sock_queue *)queue;
+}
+#endif
+
 static inline bool reqsk_queue_empty(const struct request_sock_queue *queue)
 {
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	return priority_req_queue(queue)->size == 1;
+#else
 	return queue->rskq_accept_head == NULL;
+#endif
 }
 
 static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue *queue,
@@ -206,6 +222,9 @@ static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue 
 	struct request_sock *req;
 
 	spin_lock_bh(&queue->rskq_lock);
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	/* TODO: Amanda: Add removing algorithm here */
+#else
 	req = queue->rskq_accept_head;
 	if (req) {
 		sk_acceptq_removed(parent);
@@ -213,9 +232,11 @@ static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue 
 		if (queue->rskq_accept_head == NULL)
 			queue->rskq_accept_tail = NULL;
 	}
+#endif
 	spin_unlock_bh(&queue->rskq_lock);
 	return req;
 }
+
 
 static inline void reqsk_queue_removed(struct request_sock_queue *queue,
 				       const struct request_sock *req)

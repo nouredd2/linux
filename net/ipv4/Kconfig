@@ -299,11 +299,25 @@ config SYN_COOKIES
 
 config SYN_CHALLENGE
   bool "IP: TCP client puzzles support"
+  default y
   ---help---
     Enable support for client puzzles as a defense against SYN flooding. 
     By default the algorithms used are those presented in the Juels1999 paper
     using the SHA256 digest function. Default number of subchallenge is 
     and the default challenge difficutly is .
+
+    If you say Y here, you enable support for client puzzles in the 
+    kernel's TCP/IP stack. 
+
+    If unsure, say N.
+
+config REQSK_PRIORITY_QUEUE
+  bool "IP: TCP priority queues for request sockets"
+  depends on SYN_CHALLENGE
+  default y
+  ---help---
+    For DSN 2019, enable support for priority queues for handling request sockets
+    when puzzles are implemented.
 
     If you say Y here, you enable support for client puzzles in the 
     kernel's TCP/IP stack. 

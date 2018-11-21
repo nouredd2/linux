@@ -1921,7 +1921,7 @@ static int tcp_v4_init_sock(struct sock *sk)
 #endif
 
 #ifdef CONFIG_SYN_CHALLENGE
-  tcp_sk(sk)->sol = 0;
+	tcp_sk(sk)->sol = 0;
 #endif
 
 	return 0;

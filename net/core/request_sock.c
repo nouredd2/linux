@@ -35,8 +35,12 @@
  * Note : Dont forget somaxconn that may limit backlog too.
  */
 
+#define DSN_MAX_SIZE 1024
 void reqsk_queue_alloc(struct request_sock_queue *queue)
 {
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	struct priority_request_sock_queue *pr_queue = priority_req_queue(queue);
+#endif
 	spin_lock_init(&queue->rskq_lock);
 
 	spin_lock_init(&queue->fastopenq.lock);
@@ -45,6 +49,15 @@ void reqsk_queue_alloc(struct request_sock_queue *queue)
 	queue->fastopenq.qlen = 0;
 
 	queue->rskq_accept_head = NULL;
+
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	pr_queue->max_size = DSN_MAX_SIZE;
+	pr_queue->size = 1;
+
+	/* set them all to zero initially */
+	memset(pr_queue->queue, 0,
+	       DSN_MAX_SIZE * sizeof(struct request_sock *));
+#endif
 }
 
 /*
