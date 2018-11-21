@@ -55,7 +55,7 @@ struct request_sock {
 #define rsk_window_clamp		__req_common.skc_window_clamp
 #define rsk_rcv_wnd			__req_common.skc_rcv_wnd
 
-	struct request_sock		*dl_next;
+	struct request_sock		*dl_next;//didn't mess with this in case request_sock is used for another purpose
 	u16				mss;
 	u8				num_retrans; /* number of retransmits */
 	u8				cookie_ts:1; /* syncookie: encode tcpopts in timestamp */
@@ -67,6 +67,8 @@ struct request_sock {
 	u32				*saved_syn;
 	u32				secid;
 	u32				peer_secid;
+	//@TODO implement weighting algorithm
+	u32 			weight;//type?
 };
 
 static inline struct request_sock *inet_reqsk(const struct sock *sk)
@@ -173,6 +175,20 @@ struct request_sock_queue {
 					     * if TFO is enabled.
 					     */
 };
+
+//make priority version of above struct 
+
+struct priority_request_sock_queue{
+	spinlock_t rskq_lock;
+	u32 synflood_warned;
+	atomic_t qlen;
+	atomic_t young;
+
+	unsigned max_size = 1024;
+	unsigned size = 1;
+	struct request_sock *queue[1024];
+	struct fastopen_queue fastopenq; 
+}
 
 void reqsk_queue_alloc(struct request_sock_queue *queue);
 

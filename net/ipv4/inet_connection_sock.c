@@ -715,7 +715,7 @@ static void reqsk_timer_handler(unsigned long data)
 			if (qlen < young)
 				break;
 			thresh--;
-			young <<= 1;
+			young <<e 1;
 		}
 	}
 	defer_accept = READ_ONCE(queue->rskq_defer_accept);
@@ -919,11 +919,83 @@ static void inet_child_forget(struct sock *sk, struct request_sock *req,
 	reqsk_put(req);
 }
 
+void heap_swap(struct request_sock * req, int index, int parent){
+	//@TODO is this the correct way to implement this?  
+	if(index==parent){
+		return;
+	}
+
+	struct sock_common tempsc = req[index].__req_common;
+	struct request_sock *temprs = req[index].dl_next;
+	u16 tempmss = req[index].mss;
+	u8 tempnumret = req[index].num_retrans;
+	u8 tempcookie_ts:1 = req[index].cookie_ts:1;
+	u8 tempnum_timeout:7 = req[index].num_timeout:7;
+	u32 tempts_recent = req[index].ts_recent;
+	struct timer_list temprsk_timer = req[index].rsk_timer;
+	const struct request_sock_ops * temprsk_ops = req[index].rsk_ops;
+	struct sock * tempsk = req[index].sk;
+	u32 * tempsaved_syn = req[index].saved_syn;
+	u32 tempsecid = req[index].secid;
+	u32 temppeer_secid = req[index].peer_secid;
+	u32 tempweight =req[index].weight;
+	
+	req[index].__req_common = req[parent].__req_common;
+	req[index].dl_next = req[parent].dl_next;
+	req[index].mss = req[parent].mss;
+	req[index].num_retrans = req[parent].num_retrans;
+	req[index].cookie_ts:1 = req[parent].cookie_ts:1;
+	req[index].num_timeout:7 = req[parent].num_timeout:7;
+	req[index].ts_recent = req[parent].ts_recent;
+	req[index].rsk_timer = req[parent].rsk_timer;
+	req[index].rsk_ops = req[parent].rsk_ops;
+	req[index].sk = req[parent].sk;
+	req[index].saved_syn = req[parent].saved_syn;
+	req[index].secid = req[parent].secid;
+	req[index].peer_secid = req[parent].peer_secid;
+	req[index].weight = req[parent].weight;
+
+      req[parent].__req_common = tempsc;
+      req[parent].dl_next = temprs;
+      req[parent].mss = tempmss;
+      req[parent].num_retrans = tempnumret;
+      req[parent].cookie_ts:1 = tempcookie_ts:1;
+      req[parent].num_timeout:7 = tempnum_timeout:7;
+      req[parent].ts_recent = tempts_recent;
+      req[parent].rsk_timer = temprsk_timer;
+      req[parent].rsk_ops = temprsk_ops;
+      req[parent].sk = tempsk;
+      req[parent].saved_syn = tempsaved_syn;
+      req[parent].secid = tempsecid;
+      req[parent].peer_secid = temppeer_secid;
+      req[parent].weight = tempweight;
+
+	return;
+}
+
+void heapify_up(struct request_sock * req, unsigned i){
+	int index = (int) i;
+	int parent = 0;
+	if(index > 1){
+		while(true){
+			parent = index/2;
+			if(parent<1){
+				return;
+			}
+			else if(req[index].weight > req[parent].weight){
+				heap_swap(req,index, parent);
+			}
+			index = parent;
+		}
+	}
+
+}
+
 struct sock *inet_csk_reqsk_queue_add(struct sock *sk,
 				      struct request_sock *req,
 				      struct sock *child)
 {
-	struct request_sock_queue *queue = &inet_csk(sk)->icsk_accept_queue;
+	struct priority_request_sock_queue *queue = &inet_csk(sk)->icsk_accept_queue;
 
 	spin_lock(&queue->rskq_lock);
 	if (unlikely(sk->sk_state != TCP_LISTEN)) {
@@ -931,12 +1003,16 @@ struct sock *inet_csk_reqsk_queue_add(struct sock *sk,
 		child = NULL;
 	} else {
 		req->sk = child;
-		req->dl_next = NULL;
-		if (queue->rskq_accept_head == NULL)
-			queue->rskq_accept_head = req;
-		else
-			queue->rskq_accept_tail->dl_next = req;
-		queue->rskq_accept_tail = req;
+		//if the queue is full - do nothing 
+		if(queue->max_size == queue->size){
+			return child;
+		}
+		else{
+			queue->requests[pqueue->size] = req;
+			//@TODO assign weight to the request 
+			queue->size++;
+			heapify_up(queue,queue->size-1);
+		}
 		sk_acceptq_added(sk);
 	}
 	spin_unlock(&queue->rskq_lock);
