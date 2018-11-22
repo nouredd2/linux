@@ -18,6 +18,7 @@
 
 #include <net/inet_connection_sock.h>
 #include <net/inet_hashtables.h>
+#include <net/inet_priority_queue.h>
 #include <net/inet_timewait_sock.h>
 #include <net/ip.h>
 #include <net/route.h>
@@ -923,11 +924,9 @@ struct sock *inet_csk_reqsk_queue_add(struct sock *sk,
 				      struct request_sock *req,
 				      struct sock *child)
 {
-#ifdef CONFIG_REQSK_PRIORITY_QUEUE
-	struct priority_request_sock_queue *queue =
-		(struct priority_request_sock_queue *) &inet_csk(sk)->icsk_accept_queue;
-#else
 	struct request_sock_queue *queue = &inet_csk(sk)->icsk_accept_queue;
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	struct priority_request_sock_queue *pr_queue = priority_req_queue(queue);
 #endif
 
 	spin_lock(&queue->rskq_lock);
@@ -938,15 +937,15 @@ struct sock *inet_csk_reqsk_queue_add(struct sock *sk,
 		req->sk = child;
 #ifdef CONFIG_REQSK_PRIORITY_QUEUE
 		//if the queue is full - do nothing
-		if(queue->max_size == queue->size){
+		if(pr_queue->max_size == pr_queue->size){
 			inet_child_forget(sk, req, child);
 			child = NULL;
 			goto exit;
 		} else{
-			queue->requests[queue->size] = req;
-			//@TODO assign weight to the request 
-			queue->size++;
-			heapify_up(queue, queue->size-1);
+			pr_queue->queue[pr_queue->size] = req;
+			//@TODO assign weight to the request
+			pr_queue->size++;
+			heapify_up(pr_queue, pr_queue->size-1);
 		}
 #else
 		req->dl_next = NULL;

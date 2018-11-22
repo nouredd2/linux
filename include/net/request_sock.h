@@ -220,10 +220,19 @@ static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue 
 						      struct sock *parent)
 {
 	struct request_sock *req;
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	struct priority_request_sock_queue *pr_queue = priority_req_queue(queue);
+#endif
 
 	spin_lock_bh(&queue->rskq_lock);
 #ifdef CONFIG_REQSK_PRIORITY_QUEUE
 	/* TODO: Amanda: Add removing algorithm here */
+	/* You should use pr_queue here instead of queue, but also must call
+	 * sk_accetpq_removed(parent) and that's it
+	 */
+	/* remove these, it's just to silence the compiler */
+	pr_info("%s: size is: %d\n", __func__, pr_queue->size);
+	req = NULL;
 #else
 	req = queue->rskq_accept_head;
 	if (req) {

@@ -10,16 +10,24 @@
 
 #define pr_fmt(fmt) "PQUEUE: " fmt
 
-#include <net/inet_connection_sock.h>
-#include <net/tcp.h>
+#include <net/inet_priority_queue.h>
 
-static void heap_swap(struct request_sock * req, int index, int parent)
+static inline void heap_swap(struct priority_request_sock_queue *queue, u32 index, u32 parent)
 {
-	//@TODO is this the correct way to implement this?  
-	if(index==parent){
+	//@TODO is this the correct way to implement this?
+	struct request_sock *tmp;
+
+	if (index == parent) {
 		return;
 	}
 
+	tmp = queue->queue[index];
+	queue->queue[index] = queue->queue[parent];
+	queue->queue[parent] = tmp;
+
+	/* I think that's all we need, but might want to double check */
+
+#if 0
 	struct sock_common tempsc = req[index].__req_common;
 	struct request_sock *temprs = req[index].dl_next;
 	u16 tempmss = req[index].mss;
@@ -66,21 +74,21 @@ static void heap_swap(struct request_sock * req, int index, int parent)
 	req[parent].weight = tempweight;
 
 	return;
+#endif
 }
 /* no need to export this since it's only used in this context */
 
-void heapify_up(struct request_sock * req, unsigned i)
+void heapify_up (struct priority_request_sock_queue *queue, u32 index)
 {
-	int index = (int) i;
-	int parent = 0;
+	u32 parent = 0;
 	if (index > 1) {
 		while(true) {
 			parent = index / 2;
 
 			if (parent < 1)
 				return;
-			else if (req[index].weight > req[parent].weight) {
-				heap_swap(req,index, parent);
+			else if (queue->queue[index]->weight > queue->queue[parent]->weight) {
+				heap_swap(queue,index, parent);
 			}
 
 			index = parent;
