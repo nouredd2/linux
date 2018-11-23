@@ -216,6 +216,10 @@ static inline bool reqsk_queue_empty(const struct request_sock_queue *queue)
 #endif
 }
 
+void max_heapify(struct priority_request_sock_queue * pqueue){
+
+}
+
 static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue *queue,
 						      struct sock *parent)
 {
@@ -231,8 +235,20 @@ static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue 
 	 * sk_accetpq_removed(parent) and that's it
 	 */
 	/* remove these, it's just to silence the compiler */
-	pr_info("%s: size is: %d\n", __func__, pr_queue->size);
-	req = NULL;
+	if(pr_queue->size <=1){//is is empty
+		req = NULL;
+	}
+	else{
+		req = pr_queue->requests[1];
+		heap_swap(pr_queue, 1, pr_queue->size-1);
+		pr_queue->size--;
+		if(pr_queue->size > 1){
+			max_heapify(pr_queue);
+		}
+		sk_acceptpq_removed(parent);
+	}
+	//pr_info("%s: size is: %d\n", __func__, pr_queue->size);
+	//req = NULL;
 #else
 	req = queue->rskq_accept_head;
 	if (req) {
