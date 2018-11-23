@@ -20,7 +20,6 @@
 #include <linux/types.h>
 #include <linux/bug.h>
 #include <linux/refcount.h>
-#include <net/inet_connection_sock.h>
 #include <net/inet_priority_queue.h>
 #include <net/sock.h>
 
@@ -182,7 +181,7 @@ struct request_sock_queue {
 /* Let's use this neat little trick from C to avoid having to redefine things we
  * don't really need to redefine
  */
-struct priority_request_sock_queue{
+struct priority_request_sock_queue {
 	/* always keep this at the top */
 	struct request_sock_queue icsk_rskq;
 
@@ -217,10 +216,6 @@ static inline bool reqsk_queue_empty(const struct request_sock_queue *queue)
 #endif
 }
 
-void max_heapify(struct priority_request_sock_queue * pqueue){
-
-}
-
 static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue *queue,
 						      struct sock *parent)
 {
@@ -243,7 +238,7 @@ static inline struct request_sock *reqsk_queue_remove(struct request_sock_queue 
 		req = pr_queue->queue[1];
 		heap_swap(pr_queue, 1, pr_queue->size-1);
 		pr_queue->size--;
-		if(pr_queue->size > 1){
+		if (pr_queue->size > 1) {
 			max_heapify(pr_queue);
 		}
 		sk_acceptq_removed(parent); //@TODO: do I need to write another function sk_acceptpq_removed(sock); 

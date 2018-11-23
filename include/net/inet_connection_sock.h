@@ -22,6 +22,7 @@
 
 #include <net/inet_sock.h>
 #include <net/request_sock.h>
+#include <net/inet_priority_queue.h>
 
 #define INET_CSK_DEBUG 1
 

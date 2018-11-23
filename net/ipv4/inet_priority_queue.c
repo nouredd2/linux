@@ -11,8 +11,9 @@
 #define pr_fmt(fmt) "PQUEUE: " fmt
 
 #include <net/inet_priority_queue.h>
+#include <net/request_sock.h>
 
-static inline void heap_swap(struct priority_request_sock_queue *queue, u32 index, u32 parent)
+void heap_swap(struct priority_request_sock_queue *queue, u32 index, u32 parent)
 {
 	//@TODO is this the correct way to implement this?
 	struct request_sock *tmp;
@@ -76,13 +77,14 @@ static inline void heap_swap(struct priority_request_sock_queue *queue, u32 inde
 	return;
 #endif
 }
+EXPORT_SYMBOL(heap_swap);
 /* no need to export this since it's only used in this context */
 
 void heapify_up (struct priority_request_sock_queue *queue, u32 index)
 {
 	u32 parent = 0;
 	if (index > 1) {
-		while(true) {
+		while (true) {
 			parent = index / 2;
 
 			if (parent < 1)
@@ -98,34 +100,38 @@ void heapify_up (struct priority_request_sock_queue *queue, u32 index)
 EXPORT_SYMBOL(heapify_up);
 
 
-void max_heapify(struct priority_request_sock_queue * queue){
-	unsigned i = 1;
-	unsigned l,r;
-	unsigned largest = 1;
+void max_heapify (struct priority_request_sock_queue *queue)
+{
+	u32 i = 1;
+	u32 l,r;
+	u32 largest = 1;
 
-	if(pqueue->size<=1){
+	if (queue->size<=1){
 		return;
 	}
 
-	while(i< queue->size){
+	while (i< queue->size) {
 		largest = i;
 		l = 2*i;
 		r = 2*i +1;
-		if(l<queue->size){
-			if(queue->queue[l]->weight > queue->queue[largest]->weight){
-				largest = l;	
+
+		if (l<queue->size) {
+			if (queue->queue[l]->weight > queue->queue[largest]->weight) {
+				largest = l;
 			}
 		}
-		if(r < queue->size){
-			if(queue->queue[r]->weight > queue->queue[largest]->weight){
+
+		if (r < queue->size) {
+			if (queue->queue[r]->weight > queue->queue[largest]->weight) {
 				largest = r;
 			}
 		}
+
 		if(largest == i){
 			return;
 		}
-		heap_swap(i,largest);
+		heap_swap(queue, i, largest);
 		i = largest;
 	}
 }
-EXPORT_SYMOBOL(max_heapify);
+EXPORT_SYMBOL(max_heapify);

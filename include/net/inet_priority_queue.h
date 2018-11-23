@@ -1,10 +1,14 @@
-#ifndef __INET_PRIORITY_QUEUE_H
-#define __INET_PRIORITY_QUEUE_H
+#ifndef _INET_PRIORITY_QUEUE_H
+#define _INET_PRIORITY_QUEUE_H
 
-#include <net/inet_connection_sock.h>
+#include <linux/types.h>
 
-void heapify_up(struct priority_request_sock_queue *queue, u32 index);
-static inline void heap_swap(struct priority_request_sock_queue *queue, u32 index, u32 parent    );
+struct priority_request_sock_queue;
 
-void max_heapify(struct priority_request_sock_queue * queue);
+void heapify_up (struct priority_request_sock_queue *queue, u32 index);
+
+void heap_swap (struct priority_request_sock_queue *queue, u32 index, u32 parent);
+
+void max_heapify (struct priority_request_sock_queue *queue);
+
 #endif
