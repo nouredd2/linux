@@ -4,5 +4,7 @@
 #include <net/inet_connection_sock.h>
 
 void heapify_up(struct priority_request_sock_queue *queue, u32 index);
+static inline void heap_swap(struct priority_request_sock_queue *queue, u32 index, u32 parent    );
 
+void max_heapify(struct priority_request_sock_queue * queue);
 #endif
