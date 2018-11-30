@@ -15,6 +15,7 @@
 
 void heap_swap(struct priority_request_sock_queue *queue, u32 index, u32 parent)
 {
+	pr_info("%s: we are in heap swap", __func__);
 	//@TODO is this the correct way to implement this?
 	struct request_sock *tmp;
 

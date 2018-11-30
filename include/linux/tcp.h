@@ -29,6 +29,10 @@
 #include <net/tcp_challenge.h>
 #endif
 
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+#include <linux/hashtable.h>
+#endif
+
 static inline struct tcphdr *tcp_hdr(const struct sk_buff *skb)
 {
 	return (struct tcphdr *)skb_transport_header(skb);
@@ -405,8 +409,8 @@ struct tcp_sock {
 #endif
 
 #ifdef CONFIG_SYN_CHALLENGE
-  int saw_challenge;
-  struct tcpch_solution_head  *sol;
+	int saw_challenge;
+	struct tcpch_solution_head  *sol;
 #endif
 
 /* TCP fastopen related information */
@@ -416,6 +420,15 @@ struct tcp_sock {
 	 */
 	struct request_sock *fastopen_rsk;
 	u32	*saved_syn;
+
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	/* TODO: must initialize these things, using
+	 * - hash_init(pr_state_cache)
+	 * - spin_lock_init(&pr_state_lock)
+	 */
+	DECLARE_HASHTABLE(pr_state_cache, 16);
+	spinlock_t pr_state_lock;
+#endif
 };
 
 enum tsq_enum {

@@ -6715,115 +6715,115 @@ drop:
 EXPORT_SYMBOL(tcp_conn_request);
 
 struct sock *challenge_v4_check (struct sock *sk,
-        struct sk_buff *skb)
+				 struct sk_buff *skb)
 {
-  /*
-   * This code mimics the cookie_v4_check routine in syncookies.c
-   */
-  struct ip_options *opt = &TCP_SKB_CB(skb)->header.h4.opt;
-  struct tcp_options_received tcp_opt;
-  struct inet_request_sock *ireq;
-  struct tcp_request_sock *treq;
-  const struct tcphdr *th = tcp_hdr(skb);
-  struct sock *ret = sk;
-  struct request_sock *req;
-  int mss = 0;
-  struct rtable *rt;
-  struct flowi4 fl4;
-  u32 tsoff = 0;
-  u32 ts_current = 0;
+	/*
+	 * This code mimics the cookie_v4_check routine in syncookies.c
+	 */
+	struct ip_options *opt = &TCP_SKB_CB(skb)->header.h4.opt;
+	struct tcp_options_received tcp_opt;
+	struct inet_request_sock *ireq;
+	struct tcp_request_sock *treq;
+	const struct tcphdr *th = tcp_hdr(skb);
+	struct sock *ret = sk;
+	struct request_sock *req;
+	int mss = 0;
+	struct rtable *rt;
+	struct flowi4 fl4;
+	u32 tsoff = 0;
+	u32 ts_current = 0;
 
 
-  if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
-    goto out;
+	if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
+		goto out;
 
-  /* parse the options from the packet */
-  memset (&tcp_opt, 0, sizeof (tcp_opt));
-  tcp_parse_options(sock_net(sk), skb, &tcp_opt, 0, NULL);
+	/* parse the options from the packet */
+	memset (&tcp_opt, 0, sizeof (tcp_opt));
+	tcp_parse_options(sock_net(sk), skb, &tcp_opt, 0, NULL);
 
-  /* first check if the accept queue if full */
-  if (sk_acceptq_is_full(sk)) {
-    /* check if the ACK packet has expired and send a RST flag */
-    if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
-      ts_current = tcp_time_stamp_raw();
-      if ((ts_current - tcp_opt.rcv_tsecr) > 
-                sock_net(sk)->ipv4.sysctl_tcp_challenge_timeout)
-        tcp_request_sock_ops.send_reset (sk, skb);
-    } else {
-      NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
-      tcp_listendrop (sk);
-    }
-    return 0;
-  }
+	/* first check if the accept queue if full */
+	if (sk_acceptq_is_full(sk)) {
+		/* check if the ACK packet has expired and send a RST flag */
+		if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
+			ts_current = tcp_time_stamp_raw();
+			if ((ts_current - tcp_opt.rcv_tsecr) > 
+			    sock_net(sk)->ipv4.sysctl_tcp_challenge_timeout)
+				tcp_request_sock_ops.send_reset (sk, skb);
+		} else {
+			NET_INC_STATS(sock_net(sk), LINUX_MIB_LISTENOVERFLOWS);
+			tcp_listendrop (sk);
+		}
+		return 0;
+	}
 
-  if (tcp_opt.user_mss)
-    mss = tcp_opt.user_mss;
+	if (tcp_opt.user_mss)
+		mss = tcp_opt.user_mss;
 
-  if (! tcp_opt.sol)
-    {
-      __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
-      goto out;
-    }
+	if (! tcp_opt.sol)
+	{
+		__NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
+		goto out;
+	}
 
-  pr_debug ("Obtained solution to the presented challenge!\n");
-  if (! tcpch_verify_solution (sk, skb, tcp_opt.sol))
-    {
-      pr_debug ("Solution verification failed!\n");
-      __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
-      tcpch_free_solution (tcp_opt.sol);
-      tcp_opt.sol = 0;
-      goto out;
-    }
+	pr_debug ("Obtained solution to the presented challenge!\n");
+	if (!tcpch_verify_solution (sk, skb, tcp_opt.sol))
+	{
+		pr_debug ("Solution verification failed!\n");
+		__NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
+		tcpch_free_solution (tcp_opt.sol);
+		tcp_opt.sol = 0;
+		goto out;
+	}
 
-  __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
-  pr_debug ("Solution verification succeeded!\n");
+	__NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGERECVD);
+	pr_debug ("Solution verification succeeded!\n");
 
-  /* make sure to remove the space occupied by the solution */
-  tcpch_free_solution (tcp_opt.sol);
-  tcp_opt.sol = 0;
+	/* make sure to remove the space occupied by the solution */
+	tcpch_free_solution (tcp_opt.sol);
+	tcp_opt.sol = 0;
 
-  if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
-    tsoff = secure_tcp_ts_off(sock_net(sk),
-        ip_hdr(skb)->daddr,
-        ip_hdr(skb)->saddr);
-    tcp_opt.rcv_tsecr -= tsoff;
-  }
+	if (tcp_opt.saw_tstamp && tcp_opt.rcv_tsecr) {
+		tsoff = secure_tcp_ts_off(sock_net(sk),
+					  ip_hdr(skb)->daddr,
+					  ip_hdr(skb)->saddr);
+		tcp_opt.rcv_tsecr -= tsoff;
+	}
 
-  ret = NULL;
-  req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
-  if (!req)
-    goto out;
+	ret = NULL;
+	req = inet_reqsk_alloc (&tcp_request_sock_ops, sk, false);
+	if (!req)
+		goto out;
 
-  ireq = inet_rsk(req);
-  treq = tcp_rsk(req);
+	ireq = inet_rsk(req);
+	treq = tcp_rsk(req);
 	treq->ts_off = tsoff;
-  treq->rcv_isn = ntohl(th->seq) - 1;
-  treq->snt_isn = ntohl(th->ack_seq) - 1;
-  treq->txhash = net_tx_rndhash();
-  req->mss = tcp_opt.mss_clamp;
-  ireq->ir_num = ntohs(th->dest);
-  ireq->ir_rmt_port = th->source;
-  sk_rcv_saddr_set (req_to_sk(req), ip_hdr(skb)->daddr);
-  sk_daddr_set (req_to_sk(req), ip_hdr(skb)->saddr);
-  ireq->ir_mark = inet_request_mark(sk, skb);
-  ireq->snd_wscale = tcp_opt.snd_wscale;
-  ireq->sack_ok = tcp_opt.sack_ok;
-  ireq->wscale_ok = tcp_opt.wscale_ok;
-  ireq->tstamp_ok = tcp_opt.saw_tstamp;
-  req->ts_recent = tcp_opt.saw_tstamp ? tcp_opt.rcv_tsval : 0;
-  treq->snt_synack = 0;
-  treq->tfo_listener = false;
+	treq->rcv_isn = ntohl(th->seq) - 1;
+	treq->snt_isn = ntohl(th->ack_seq) - 1;
+	treq->txhash = net_tx_rndhash();
+	req->mss = tcp_opt.mss_clamp;
+	ireq->ir_num = ntohs(th->dest);
+	ireq->ir_rmt_port = th->source;
+	sk_rcv_saddr_set (req_to_sk(req), ip_hdr(skb)->daddr);
+	sk_daddr_set (req_to_sk(req), ip_hdr(skb)->saddr);
+	ireq->ir_mark = inet_request_mark(sk, skb);
+	ireq->snd_wscale = tcp_opt.snd_wscale;
+	ireq->sack_ok = tcp_opt.sack_ok;
+	ireq->wscale_ok = tcp_opt.wscale_ok;
+	ireq->tstamp_ok = tcp_opt.saw_tstamp;
+	req->ts_recent = tcp_opt.saw_tstamp ? tcp_opt.rcv_tsval : 0;
+	treq->snt_synack = 0;
+	treq->tfo_listener = false;
 
-  ireq->ir_iif = inet_request_bound_dev_if(sk, skb);
+	ireq->ir_iif = inet_request_bound_dev_if(sk, skb);
 
-  ireq->opt = tcp_v4_save_options (skb);
+	ireq->opt = tcp_v4_save_options (skb);
 
-  if (security_inet_conn_request(sk, skb, req)) {
-    reqsk_free(req);
-    goto out;
-  }
+	if (security_inet_conn_request(sk, skb, req)) {
+		reqsk_free(req);
+		goto out;
+	}
 
-  req->num_retrans = 0;
+	req->num_retrans = 0;
 
 	/*
 	 * We need to lookup the route here to get at the correct
@@ -6845,22 +6845,22 @@ struct sock *challenge_v4_check (struct sock *sk,
 
 	/* Try to redo what tcp_v4_send_synack did. */
 
-  /* If using tcp_openreq_init_rwin, then these routines are done there
+	/* If using tcp_openreq_init_rwin, then these routines are done there
 	 * req->rsk_window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
-   * tcp_ecn_create_request (req, skb, sk, &rt->dst); 
-  */
-  tcp_openreq_init_rwin (req, sk, &rt->dst);
+	 * tcp_ecn_create_request (req, skb, sk, &rt->dst); 
+	 */
+	tcp_openreq_init_rwin (req, sk, &rt->dst);
 	ireq->ecn_ok = cookie_ecn_ok(&tcp_opt, sock_net(sk), &rt->dst);
 
-  /* use the same syncookies.c routine */
-  ret = tcp_get_cookie_sock(sk, skb, req, &rt->dst, treq->ts_off);
+	/* use the same syncookies.c routine */
+	ret = tcp_get_cookie_sock(sk, skb, req, &rt->dst, treq->ts_off);
 
 	/* ip_queue_xmit() depends on our flow being setup
 	 * Normal sockets get it right from inet_csk_route_child_sock()
 	 */
-  if (ret)
-    inet_sk(ret)->cork.fl.u.ip4 = fl4;
+	if (ret)
+		inet_sk(ret)->cork.fl.u.ip4 = fl4;
 out:
-  return ret;
+	return ret;
 }
 EXPORT_SYMBOL(challenge_v4_check);

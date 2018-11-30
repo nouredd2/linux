@@ -128,10 +128,10 @@ int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)
 
 	   If TW bucket has been already destroyed we fall back to VJ's scheme
 	   and use initial timestamp retrieved from peer table.
-	 */
+	   */
 	if (tcptw->tw_ts_recent_stamp &&
 	    (!twp || (sock_net(sk)->ipv4.sysctl_tcp_tw_reuse &&
-			     get_seconds() - tcptw->tw_ts_recent_stamp > 1))) {
+		      get_seconds() - tcptw->tw_ts_recent_stamp > 1))) {
 		tp->write_seq = tcptw->tw_snd_nxt + 65535 + 2;
 		if (tp->write_seq == 0)
 			tp->write_seq = 1;
@@ -402,11 +402,11 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 	seq = ntohl(th->seq);
 	if (sk->sk_state == TCP_NEW_SYN_RECV)
 		return tcp_req_err(sk, seq,
-				  type == ICMP_PARAMETERPROB ||
-				  type == ICMP_TIME_EXCEEDED ||
-				  (type == ICMP_DEST_UNREACH &&
-				   (code == ICMP_NET_UNREACH ||
-				    code == ICMP_HOST_UNREACH)));
+				   type == ICMP_PARAMETERPROB ||
+				   type == ICMP_TIME_EXCEEDED ||
+				   (type == ICMP_DEST_UNREACH &&
+				    (code == ICMP_NET_UNREACH ||
+				     code == ICMP_HOST_UNREACH)));
 
 	bh_lock_sock(sk);
 	/* If too many ICMPs get dropped on busy
@@ -484,7 +484,7 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 
 		icsk->icsk_backoff--;
 		icsk->icsk_rto = tp->srtt_us ? __tcp_set_rto(tp) :
-					       TCP_TIMEOUT_INIT;
+			TCP_TIMEOUT_INIT;
 		icsk->icsk_rto = inet_csk_rto_backoff(icsk, TCP_RTO_MAX);
 
 		skb = tcp_write_queue_head(sk);
@@ -493,7 +493,7 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 		tcp_mstamp_refresh(tp);
 		delta_us = (u32)(tp->tcp_mstamp - skb->skb_mstamp);
 		remaining = icsk->icsk_rto -
-			    usecs_to_jiffies(delta_us);
+			usecs_to_jiffies(delta_us);
 
 		if (remaining > 0) {
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
@@ -693,8 +693,8 @@ static void tcp_v4_send_reset(const struct sock *sk, struct sk_buff *skb)
 		rep.th.doff = arg.iov[0].iov_len / 4;
 
 		tcp_v4_md5_hash_hdr((__u8 *) &rep.opt[1],
-				     key, ip_hdr(skb)->saddr,
-				     ip_hdr(skb)->daddr, &rep.th);
+				    key, ip_hdr(skb)->saddr,
+				    ip_hdr(skb)->daddr, &rep.th);
 	}
 #endif
 	arg.csum = csum_tcpudp_nofold(ip_hdr(skb)->daddr,
@@ -733,7 +733,7 @@ out:
 
 /* The code following below sending ACKs in SYN-RECV and TIME-WAIT states
    outside socket context is ugly, certainly. What can I do?
- */
+   */
 
 static void tcp_v4_send_ack(const struct sock *sk,
 			    struct sk_buff *skb, u32 seq, u32 ack,
@@ -746,9 +746,9 @@ static void tcp_v4_send_ack(const struct sock *sk,
 		struct tcphdr th;
 		__be32 opt[(TCPOLEN_TSTAMP_ALIGNED >> 2)
 #ifdef CONFIG_TCP_MD5SIG
-			   + (TCPOLEN_MD5SIG_ALIGNED >> 2)
+			+ (TCPOLEN_MD5SIG_ALIGNED >> 2)
 #endif
-			];
+		];
 	} rep;
 	struct net *net = sock_net(sk);
 	struct ip_reply_arg arg;
@@ -825,7 +825,7 @@ static void tcp_v4_timewait_ack(struct sock *sk, struct sk_buff *skb)
 			tcp_twsk_md5_key(tcptw),
 			tw->tw_transparent ? IP_REPLY_ARG_NOSRCCHECK : 0,
 			tw->tw_tos
-			);
+		       );
 
 	inet_twsk_put(tw);
 }
@@ -837,7 +837,7 @@ static void tcp_v4_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 	 * sk->sk_state == TCP_SYN_RECV -> for Fast Open.
 	 */
 	u32 seq = (sk->sk_state == TCP_LISTEN) ? tcp_rsk(req)->snt_isn + 1 :
-					     tcp_sk(sk)->snd_nxt;
+		tcp_sk(sk)->snd_nxt;
 
 	/* RFC 7323 2.3
 	 * The window field (SEG.WND) of every outgoing segment, with the
@@ -1030,7 +1030,7 @@ int tcp_md5_do_add(struct sock *sk, const union tcp_md5_addr *addr,
 	key->prefixlen = prefixlen;
 	memcpy(&key->addr, addr,
 	       (family == AF_INET6) ? sizeof(struct in6_addr) :
-				      sizeof(struct in_addr));
+	       sizeof(struct in_addr));
 	hlist_add_head_rcu(&key->node, &md5sig->head);
 	return 0;
 }
@@ -1432,21 +1432,21 @@ static struct sock *tcp_v4_cookie_check(struct sock *sk, struct sk_buff *skb)
 {
 	const struct tcphdr *th = tcp_hdr(skb);
 #ifdef CONFIG_SYN_CHALLENGE
-  struct net *net = sock_net(sk);
-  /* SYN challenges take precendes only when enabled, otherwise default to cookie
-   * behavior. Note that we wouldn't reach here unless sysctl_tcp_cookies is enabled
-   */
-  if ((!th->syn) && (net->ipv4.sysctl_tcp_challenges > 0)) {
-    sk = challenge_v4_check (sk, skb);
-    goto out;
-  }
+	struct net *net = sock_net(sk);
+	/* SYN challenges take precendes only when enabled, otherwise default to cookie
+	 * behavior. Note that we wouldn't reach here unless sysctl_tcp_cookies is enabled
+	 */
+	if ((!th->syn) && (net->ipv4.sysctl_tcp_challenges > 0)) {
+		sk = challenge_v4_check (sk, skb);
+		goto out;
+	}
 #endif
 #ifdef CONFIG_SYN_COOKIES
 	if (!th->syn)
 		sk = cookie_v4_check(sk, skb);
 #endif
 out:
-  return sk;
+	return sk;
 }
 
 /* The socket must have it's spinlock held when we get
@@ -1601,7 +1601,7 @@ bool tcp_prequeue(struct sock *sk, struct sk_buff *skb)
 		tp->ucopy.memory = 0;
 	} else if (skb_queue_len(&tp->ucopy.prequeue) == 1) {
 		wake_up_interruptible_sync_poll(sk_sleep(sk),
-					   POLLIN | POLLRDNORM | POLLRDBAND);
+						POLLIN | POLLRDNORM | POLLRDBAND);
 		if (!inet_csk_ack_scheduled(sk))
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
 						  (3 * tcp_rto_min(sk)) / 4,
@@ -1946,10 +1946,10 @@ void tcp_v4_destroy_sock(struct sock *sk)
 	/* Cleans up our, hopefully empty, out_of_order_queue. */
 	skb_rbtree_purge(&tp->out_of_order_queue);
 
-  /* clean up syn challenges and solutions if any */
+	/* clean up syn challenges and solutions if any */
 #ifdef CONFIG_SYN_CHALLENGE
-  if (tp->sol)
-      tcpch_free_solution (tp->sol);
+	if (tp->sol)
+		tcpch_free_solution (tp->sol);
 #endif
 
 #ifdef CONFIG_TCP_MD5SIG
@@ -2237,7 +2237,7 @@ int tcp_seq_open(struct inode *inode, struct file *file)
 	int err;
 
 	err = seq_open_net(inode, file, &afinfo->seq_ops,
-			  sizeof(struct tcp_iter_state));
+			   sizeof(struct tcp_iter_state));
 	if (err < 0)
 		return err;
 
@@ -2278,23 +2278,23 @@ static void get_openreq4(const struct request_sock *req,
 	long delta = req->rsk_timer.expires - jiffies;
 
 	seq_printf(f, "%4d: %08X:%04X %08X:%04X"
-		" %02X %08X:%08X %02X:%08lX %08X %5u %8d %u %d %pK",
-		i,
-		ireq->ir_loc_addr,
-		ireq->ir_num,
-		ireq->ir_rmt_addr,
-		ntohs(ireq->ir_rmt_port),
-		TCP_SYN_RECV,
-		0, 0, /* could print option size, but that is af dependent. */
-		1,    /* timers active (only the expire timer) */
-		jiffies_delta_to_clock_t(delta),
-		req->num_timeout,
-		from_kuid_munged(seq_user_ns(f),
-				 sock_i_uid(req->rsk_listener)),
-		0,  /* non standard timer */
-		0, /* open_requests have no inode */
-		0,
-		req);
+		   " %02X %08X:%08X %02X:%08lX %08X %5u %8d %u %d %pK",
+		   i,
+		   ireq->ir_loc_addr,
+		   ireq->ir_num,
+		   ireq->ir_rmt_addr,
+		   ntohs(ireq->ir_rmt_port),
+		   TCP_SYN_RECV,
+		   0, 0, /* could print option size, but that is af dependent. */
+		   1,    /* timers active (only the expire timer) */
+		   jiffies_delta_to_clock_t(delta),
+		   req->num_timeout,
+		   from_kuid_munged(seq_user_ns(f),
+				    sock_i_uid(req->rsk_listener)),
+		   0,  /* non standard timer */
+		   0, /* open_requests have no inode */
+		   0,
+		   req);
 }
 
 static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i)
@@ -2338,24 +2338,24 @@ static void get_tcp4_sock(struct sock *sk, struct seq_file *f, int i)
 		rx_queue = max_t(int, tp->rcv_nxt - tp->copied_seq, 0);
 
 	seq_printf(f, "%4d: %08X:%04X %08X:%04X %02X %08X:%08X %02X:%08lX "
-			"%08X %5u %8d %lu %d %pK %lu %lu %u %u %d",
-		i, src, srcp, dest, destp, state,
-		tp->write_seq - tp->snd_una,
-		rx_queue,
-		timer_active,
-		jiffies_delta_to_clock_t(timer_expires - jiffies),
-		icsk->icsk_retransmits,
-		from_kuid_munged(seq_user_ns(f), sock_i_uid(sk)),
-		icsk->icsk_probes_out,
-		sock_i_ino(sk),
-		refcount_read(&sk->sk_refcnt), sk,
-		jiffies_to_clock_t(icsk->icsk_rto),
-		jiffies_to_clock_t(icsk->icsk_ack.ato),
-		(icsk->icsk_ack.quick << 1) | icsk->icsk_ack.pingpong,
-		tp->snd_cwnd,
-		state == TCP_LISTEN ?
-		    fastopenq->max_qlen :
-		    (tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh));
+		   "%08X %5u %8d %lu %d %pK %lu %lu %u %u %d",
+		   i, src, srcp, dest, destp, state,
+		   tp->write_seq - tp->snd_una,
+		   rx_queue,
+		   timer_active,
+		   jiffies_delta_to_clock_t(timer_expires - jiffies),
+		   icsk->icsk_retransmits,
+		   from_kuid_munged(seq_user_ns(f), sock_i_uid(sk)),
+		   icsk->icsk_probes_out,
+		   sock_i_ino(sk),
+		   refcount_read(&sk->sk_refcnt), sk,
+		   jiffies_to_clock_t(icsk->icsk_rto),
+		   jiffies_to_clock_t(icsk->icsk_ack.ato),
+		   (icsk->icsk_ack.quick << 1) | icsk->icsk_ack.pingpong,
+		   tp->snd_cwnd,
+		   state == TCP_LISTEN ?
+		   fastopenq->max_qlen :
+		   (tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh));
 }
 
 static void get_timewait4_sock(const struct inet_timewait_sock *tw,
@@ -2371,10 +2371,10 @@ static void get_timewait4_sock(const struct inet_timewait_sock *tw,
 	srcp  = ntohs(tw->tw_sport);
 
 	seq_printf(f, "%4d: %08X:%04X %08X:%04X"
-		" %02X %08X:%08X %02X:%08lX %08X %5d %8d %d %d %pK",
-		i, src, srcp, dest, destp, tw->tw_substate, 0, 0,
-		3, jiffies_delta_to_clock_t(delta), 0, 0, 0, 0,
-		refcount_read(&tw->tw_refcnt), tw);
+		   " %02X %08X:%08X %02X:%08lX %08X %5d %8d %d %d %pK",
+		   i, src, srcp, dest, destp, tw->tw_substate, 0, 0,
+		   3, jiffies_delta_to_clock_t(delta), 0, 0, 0, 0,
+		   refcount_read(&tw->tw_refcnt), tw);
 }
 
 #define TMPSZ 150
@@ -2387,8 +2387,8 @@ static int tcp4_seq_show(struct seq_file *seq, void *v)
 	seq_setwidth(seq, TMPSZ - 1);
 	if (v == SEQ_START_TOKEN) {
 		seq_puts(seq, "  sl  local_address rem_address   st tx_queue "
-			   "rx_queue tr tm->when retrnsmt   uid  timeout "
-			   "inode");
+			 "rx_queue tr tm->when retrnsmt   uid  timeout "
+			 "inode");
 		goto out;
 	}
 	st = seq->private;
@@ -2537,11 +2537,11 @@ static int __net_init tcp_sk_init(struct net *net)
 	net->ipv4.sysctl_tcp_synack_retries = TCP_SYNACK_RETRIES;
 	net->ipv4.sysctl_tcp_syncookies = 1;
 #ifdef CONFIG_SYN_CHALLENGE
-  net->ipv4.sysctl_tcp_challenges = 1; /* enable tcp challenges by default */
-  net->ipv4.sysctl_tcp_challenge_nz = TCPCH_DEFAULT_NZ;
-  net->ipv4.sysctl_tcp_challenge_diff = TCPCH_DEFAULT_NDIFF;
-  net->ipv4.sysctl_tcp_challenge_len = TCPCH_DEFAULT_LEN;
-  net->ipv4.sysctl_tcp_challenge_timeout = TCPCH_DEFAULT_TO;
+	net->ipv4.sysctl_tcp_challenges = 1; /* enable tcp challenges by default */
+	net->ipv4.sysctl_tcp_challenge_nz = TCPCH_DEFAULT_NZ;
+	net->ipv4.sysctl_tcp_challenge_diff = TCPCH_DEFAULT_NDIFF;
+	net->ipv4.sysctl_tcp_challenge_len = TCPCH_DEFAULT_LEN;
+	net->ipv4.sysctl_tcp_challenge_timeout = TCPCH_DEFAULT_TO;
 #endif
 	net->ipv4.sysctl_tcp_reordering = TCP_FASTRETRANS_THRESH;
 	net->ipv4.sysctl_tcp_retries1 = TCP_RETR1;
@@ -2573,9 +2573,9 @@ static void __net_exit tcp_sk_exit_batch(struct list_head *net_exit_list)
 }
 
 static struct pernet_operations __net_initdata tcp_sk_ops = {
-       .init	   = tcp_sk_init,
-       .exit	   = tcp_sk_exit,
-       .exit_batch = tcp_sk_exit_batch,
+	.init	   = tcp_sk_init,
+	.exit	   = tcp_sk_exit,
+	.exit_batch = tcp_sk_exit_batch,
 };
 
 void __init tcp_v4_init(void)
