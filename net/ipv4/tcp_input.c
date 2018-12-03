@@ -126,6 +126,10 @@ int sysctl_tcp_invalid_ratelimit __read_mostly = HZ/2;
 #define REXMIT_LOST	1 /* retransmit packets marked lost */
 #define REXMIT_NEW	2 /* FRTO-style transmit of unsent/new packets */
 
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+extern u32 compute_weight(struct tcp_sock *, __be32, u32);
+#endif
+
 
 static void tcp_gro_dev_warn(struct sock *sk, const struct sk_buff *skb,
 			     unsigned int len)
@@ -6732,6 +6736,7 @@ struct sock *challenge_v4_check (struct sock *sk,
 	struct flowi4 fl4;
 	u32 tsoff = 0;
 	u32 ts_current = 0;
+	u8 diff = 0;
 
 
 	if (!sock_net(sk)->ipv4.sysctl_tcp_challenges || !th->ack || th->rst)
@@ -6759,13 +6764,14 @@ struct sock *challenge_v4_check (struct sock *sk,
 	if (tcp_opt.user_mss)
 		mss = tcp_opt.user_mss;
 
-	if (! tcp_opt.sol)
+	if (!tcp_opt.sol)
 	{
 		__NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
 		goto out;
 	}
 
 	pr_debug ("Obtained solution to the presented challenge!\n");
+	diff = tcp_opt.sol->diff;
 	if (!tcpch_verify_solution (sk, skb, tcp_opt.sol))
 	{
 		pr_debug ("Solution verification failed!\n");
@@ -6842,6 +6848,11 @@ struct sock *challenge_v4_check (struct sock *sk,
 		reqsk_free(req);
 		goto out;
 	}
+
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	/* set the request sock weight here */
+	req->weight = compute_weight(tcp_sk(sk), ip_hdr(skb)->saddr, (u32)diff);
+#endif
 
 	/* Try to redo what tcp_v4_send_synack did. */
 

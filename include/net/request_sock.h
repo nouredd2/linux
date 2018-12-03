@@ -67,8 +67,9 @@ struct request_sock {
 	u32				*saved_syn;
 	u32				secid;
 	u32				peer_secid;
-	//@TODO implement weighting algorithm
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
 	u32				weight;
+#endif
 };
 
 static inline struct request_sock *inet_reqsk(const struct sock *sk)
@@ -104,6 +105,9 @@ reqsk_alloc(const struct request_sock_ops *ops, struct sock *sk_listener,
 	sk_tx_queue_clear(req_to_sk(req));
 	req->saved_syn = NULL;
 	refcount_set(&req->rsk_refcnt, 0);
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	req->weight = 0;
+#endif
 
 	return req;
 }
