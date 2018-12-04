@@ -432,12 +432,12 @@ struct tcp_out_options {
 	struct tcp_fastopen_cookie *fastopen_cookie;	/* Fast open cookie */
 
 #ifdef CONFIG_SYN_CHALLENGE
-  enum syn_challenge_type ctype;
-  union {
-      /* only one of these should be here! */
-      struct tcpch_challenge *chlg; /* send a tcp challenge */
-      struct tcpch_solution_head *sol;   /* send a tcp challenge solution */
-  };
+	enum syn_challenge_type ctype;
+	union {
+		/* only one of these should be here! */
+		struct tcpch_challenge *chlg; /* send a tcp challenge */
+		struct tcpch_solution_head *sol;   /* send a tcp challenge solution */
+	};
 #endif
 };
 
@@ -462,13 +462,13 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 			      struct tcp_out_options *opts)
 {
 #ifdef CONFIG_SYN_COOKIES
-  struct tcpch_challenge *chlg;
-  struct tcpch_solution_item *item;
-  struct tcpch_solution_head *head;
-  u8 syn_challenge_opt_len;
-  u8 *p8;
-  u16 *p16;
-  u32 *p32;
+	struct tcpch_challenge *chlg;
+	struct tcpch_solution_item *item;
+	struct tcpch_solution_head *head;
+	u8 syn_challenge_opt_len;
+	u8 *p8;
+	u16 *p16;
+	u32 *p32;
 #endif
 
 	u16 options = opts->options;	/* mungable copy */
@@ -481,7 +481,7 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 		ptr += 4;
 	}
 
-  /* send the mss when there is not solution being sent */
+	/* send the mss when there is not solution being sent */
 	if (unlikely(opts->mss && !(options & OPTION_SYN_SOLUTION))) {
 		*ptr++ = htonl((TCPOPT_MSS << 24) |
 			       (TCPOLEN_MSS << 16) |
@@ -506,137 +506,142 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 	}
 
 #ifdef CONFIG_SYN_CHALLENGE
-  if (OPTION_SYN_CHALLENGE & options)
-    {
-      chlg = opts->chlg;
-      /* calculate the length of the options field
-       * 2 for the first two bytes of the options
-       * 4 for the timestamp (may be skipped if using OPTION_TS)
-       * 1 for the number of subpuzzles
-       * 1 for the number of difficulty bits
-       * 1 for the length of solution *2
-       */
-      if (options & OPTION_TS)
-          syn_challenge_opt_len = 2 + 1 + 1 + 1 + chlg->len/16;
-      else
-          syn_challenge_opt_len = 2 + 4 + 1 + 1 + 1 + chlg->len/16;
+	if (OPTION_SYN_CHALLENGE & options)
+	{
+		chlg = opts->chlg;
+		/* calculate the length of the options field
+		 * 2 for the first two bytes of the options
+		 * 4 for the timestamp (may be skipped if using OPTION_TS)
+		 * 1 for the number of subpuzzles
+		 * 1 for the number of difficulty bits
+		 * 1 for the length of solution *2
+		 */
+		if (options & OPTION_TS)
+			syn_challenge_opt_len = 2 + 1 + 1 + 1 + chlg->len/16;
+		else
+			syn_challenge_opt_len = 2 + 4 + 1 + 1 + 1 + chlg->len/16;
 
-      /* put in the option header */
-      p16 = (u16 *)ptr;
-      *p16++ = htons (((u16)(TCPOPT_CHALLENGE << 8)) |
-                syn_challenge_opt_len);
+		/* put in the option header */
+		p16 = (u16 *)ptr;
+		*p16++ = htons (((u16)(TCPOPT_CHALLENGE << 8)) |
+				syn_challenge_opt_len);
 
-      /* throw in the timestamp */
-      if (options & OPTION_TS) {
-        p32 = (u32 *)p16; /* just so next read would work! */
-      } else {
-        p32 = (u32 *)p16;
-        *p32++ = htonl (chlg->ts);
-      }
+		/* throw in the timestamp */
+		if (options & OPTION_TS) {
+			p32 = (u32 *)p16; /* just so next read would work! */
+		} else {
+			p32 = (u32 *)p16;
+			*p32++ = htonl (chlg->ts);
+		}
 
-      /* now the parameters */
-      p8 = (u8 *)p32;
-      *p8++ = chlg->nz;
-      *p8++ = chlg->ndiff;
-      *p8++ = chlg->len;
+		/* now the parameters */
+		p8 = (u8 *)p32;
+		*p8++ = chlg->nz;
+		*p8++ = chlg->ndiff;
+		*p8++ = chlg->len;
 
-      /* now the data */
-      memcpy (p8, chlg->cbuf, chlg->len/16);
-      p8 += chlg->len/16;
+		/* now the data */
+		memcpy (p8, chlg->cbuf, chlg->len/16);
+		p8 += chlg->len/16;
 
-      /* how to do the alignment */
-      if ((syn_challenge_opt_len & 3) == 2)
-        {
-          *p8 = TCPOPT_NOP;
-          *(++p8) = TCPOPT_NOP;
-        }
-      else if ((syn_challenge_opt_len & 3) == 1)
-        {
-          *p8 = TCPOPT_NOP;
-          *(++p8) = TCPOPT_NOP;
-          *(++p8) = TCPOPT_NOP;
-        }
-      else if ((syn_challenge_opt_len & 3) == 3)
-        {
-          *p8 = TCPOPT_NOP;
-        }
+		/* how to do the alignment */
+		if ((syn_challenge_opt_len & 3) == 2)
+		{
+			*p8 = TCPOPT_NOP;
+			*(++p8) = TCPOPT_NOP;
+		}
+		else if ((syn_challenge_opt_len & 3) == 1)
+		{
+			*p8 = TCPOPT_NOP;
+			*(++p8) = TCPOPT_NOP;
+			*(++p8) = TCPOPT_NOP;
+		}
+		else if ((syn_challenge_opt_len & 3) == 3)
+		{
+			*p8 = TCPOPT_NOP;
+		}
 
-      /* done advance the main pointer */
-      ptr += (syn_challenge_opt_len + 3)>> 2;
-    }
-  else if (OPTION_SYN_SOLUTION & options)
-    {
-      pr_debug ("Writing solution to packet options!\n");
-      head = opts->sol;
-      /* calculate the length of the option field
-       * 2 for the first two bytes of the option
-       * 3 for the mss and the window scale
-       * 8 for the timestamp
-       * nz * l/16 for the solutions
-       */
-      if (options & OPTION_TS)
-          syn_challenge_opt_len = 5 + (head->nz * (head->len/16));
-      else
-          syn_challenge_opt_len = 5 + 4 + (head->nz * (head->len/16));
+		/* done advance the main pointer */
+		ptr += (syn_challenge_opt_len + 3)>> 2;
+	}
+	else if (OPTION_SYN_SOLUTION & options)
+	{
+		pr_debug ("Writing solution to packet options!\n");
+		head = opts->sol;
+		/* calculate the length of the option field
+		 * 2 for the first two bytes of the option
+		 * 3 for the mss and the window scale
+		 * 1 for the difficulty
+		 * 8 for the timestamp
+		 * nz * l/16 for the solutions
+		 */
+		if (options & OPTION_TS)
+			syn_challenge_opt_len = 6 + (head->nz * (head->len/16));
+		else
+			syn_challenge_opt_len = 6 + 4 + (head->nz * (head->len/16));
 
-      if (syn_challenge_opt_len > 255)
-        {
-          pr_err ("Length of solution not allowed!\n");
-          return;
-        }
+		if (syn_challenge_opt_len > 255)
+		{
+			pr_err ("Length of solution not allowed!\n");
+			return;
+		}
 
-      /* put in the option header */
-      p16 = (u16 *)ptr;
-      *p16++ = htons (((u16)(253 << 8)) | syn_challenge_opt_len);
+		/* put in the option header */
+		p16 = (u16 *)ptr;
+		*p16++ = htons (((u16)(253 << 8)) | syn_challenge_opt_len);
 
-      /* add in the MSS and the window scaling option */
-      *p16++ = htons (opts->mss);
-      
-      /* add the window scaling option */
-      p8 = (u8 *)p16;
-      *p8++ = opts->ws;
-      p16 = (u16 *)p8;
+		/* add in the MSS and the window scaling option */
+		*p16++ = htons (opts->mss);
 
-      /* throw in the timestamp */
-      if (options & OPTION_TS)
-        {
-          /* to make sure things are consistent when reading the next one */
-          p32 = (u32 *)p16;
-        }
-      else 
-        {
-          p32 = (u32 *)p16;
-          *p32++ = htonl (head->ts);
-        }
+		/* add the window scaling option */
+		p8 = (u8 *)p16;
+		*p8++ = opts->ws;
 
-      /* now the solutions */
-      p8 = (u8 *)p32;
-      list_for_each_entry (item, &(head->head), list)
-        {
-          memcpy (p8, item->sbuf, (head->len/16));
-          p8 += (head->len/16);
-        }
+		/* add the difficulty byte */
+		*p8++ = head->diff;
 
-      /* how to do the alignment */
-      if ((syn_challenge_opt_len & 3) == 2)
-        {
-          *p8 = TCPOPT_NOP;
-          *(++p8) = TCPOPT_NOP;
-        }
-      else if ((syn_challenge_opt_len & 3) == 1)
-        {
-          *p8 = TCPOPT_NOP;
-          *(++p8) = TCPOPT_NOP;
-          *(++p8) = TCPOPT_NOP;
-        }
-      else if ((syn_challenge_opt_len & 3) == 3)
-        {
-          *p8 = TCPOPT_NOP;
-        }
+		p16 = (u16 *)p8;
 
-      /* done, advance the pointers */
-      ptr += (syn_challenge_opt_len + 3) >> 2;
-    }
+		/* throw in the timestamp */
+		if (options & OPTION_TS)
+		{
+			/* to make sure things are consistent when reading the next one */
+			p32 = (u32 *)p16;
+		}
+		else
+		{
+			p32 = (u32 *)p16;
+			*p32++ = htonl (head->ts);
+		}
+
+		/* now the solutions */
+		p8 = (u8 *)p32;
+		list_for_each_entry (item, &(head->head), list)
+		{
+			memcpy (p8, item->sbuf, (head->len/16));
+			p8 += (head->len/16);
+		}
+
+		/* how to do the alignment */
+		if ((syn_challenge_opt_len & 3) == 2)
+		{
+			*p8 = TCPOPT_NOP;
+			*(++p8) = TCPOPT_NOP;
+		}
+		else if ((syn_challenge_opt_len & 3) == 1)
+		{
+			*p8 = TCPOPT_NOP;
+			*(++p8) = TCPOPT_NOP;
+			*(++p8) = TCPOPT_NOP;
+		}
+		else if ((syn_challenge_opt_len & 3) == 3)
+		{
+			*p8 = TCPOPT_NOP;
+		}
+
+		/* done, advance the pointers */
+		ptr += (syn_challenge_opt_len + 3) >> 2;
+	}
 #endif
 
 	if (unlikely(OPTION_SACK_ADVERTISE & options)) {
@@ -702,22 +707,22 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
  * in response to a challenge
  */
 static unsigned int tcp_ack_solution_options(struct sock *sk, 
-        struct sk_buff *skb, 
-        struct tcp_out_options *opts,
-        struct tcp_md5sig_key **md5)
+					     struct sk_buff *skb, 
+					     struct tcp_out_options *opts,
+					     struct tcp_md5sig_key **md5)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int remaining = MAX_TCP_OPTION_SPACE;
-  u32 blen;
+	u32 blen;
 
-  /* We are always resending the same stuff that we did when sending the 
-   * SYN packet because those things were not saved!
-   */
+	/* We are always resending the same stuff that we did when sending the 
+	 * SYN packet because those things were not saved!
+	 */
 
 #ifdef CONFIG_TCP_MD5SIG
 	*md5 = tp->af_specific->md5_lookup(sk, sk);
 	if (*md5) {
-    pr_info ("Setting the MD5 option\n");
+		pr_info ("Setting the MD5 option\n");
 		opts->options |= OPTION_MD5;
 		remaining -= TCPOLEN_MD5SIG_ALIGNED;
 	}
@@ -729,38 +734,38 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
 	/* remaining -= TCPOLEN_MSS_ALIGNED; */
 
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_timestamps && !*md5) &&
-        remaining >= TCPOLEN_TSTAMP_ALIGNED) {
+	    remaining >= TCPOLEN_TSTAMP_ALIGNED) {
 		opts->options |= OPTION_TS;
 		opts->tsval = tcp_skb_timestamp(skb) + tp->tsoffset;
 		opts->tsecr = tp->rx_opt.ts_recent;
 		remaining -= TCPOLEN_TSTAMP_ALIGNED;
 	}
 
-  /* first check for the solution and make sure we set it out */
-  if (likely(tp->sol)) {
-    opts->options |= OPTION_SYN_SOLUTION;
-    opts->sol = tp->sol;
-    opts->ctype = SYN_SOLUTION;
+	/* first check for the solution and make sure we set it out */
+	if (likely(tp->sol)) {
+		opts->options |= OPTION_SYN_SOLUTION;
+		opts->sol = tp->sol;
+		opts->ctype = SYN_SOLUTION;
 
-    /* check if we will be using the timestamp options */
-    if (opts->options & OPTION_TS)
-        opts->sol->opt_ts = true;
-    blen = tcpch_get_solution_length (tp->sol);
-    remaining -= blen;
-  }
+		/* check if we will be using the timestamp options */
+		if (opts->options & OPTION_TS)
+			opts->sol->opt_ts = true;
+		blen = tcpch_get_solution_length (tp->sol);
+		remaining -= blen;
+	}
 
 	if (likely(sock_net(sk)->ipv4.sysctl_tcp_window_scaling)) {
 		opts->ws = tp->rx_opt.rcv_wscale;
 		/*opts->options |= OPTION_WSCALE;
-		remaining -= TCPOLEN_WSCALE_ALIGNED; */
+		  remaining -= TCPOLEN_WSCALE_ALIGNED; */
 	} else 
-    opts->ws = 0;
+		opts->ws = 0;
 
-  if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
-    opts->options |= OPTION_SACK_ADVERTISE;
-    if (unlikely(!(OPTION_TS & opts->options)))
-        remaining -= TCPOLEN_SACKPERM_ALIGNED;
-  }
+	if (likely(sock_net(sk)->ipv4.sysctl_tcp_sack)) {
+		opts->options |= OPTION_SACK_ADVERTISE;
+		if (unlikely(!(OPTION_TS & opts->options)))
+			remaining -= TCPOLEN_SACKPERM_ALIGNED;
+	}
 
 	return MAX_TCP_OPTION_SPACE - remaining;
 }
@@ -769,8 +774,8 @@ static unsigned int tcp_ack_solution_options(struct sock *sk,
  * network wire format yet.
  */
 static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
-				struct tcp_out_options *opts,
-				struct tcp_md5sig_key **md5)
+				    struct tcp_out_options *opts,
+				    struct tcp_md5sig_key **md5)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int remaining = MAX_TCP_OPTION_SPACE;
@@ -819,7 +824,7 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 		u32 need = fastopen->cookie.len;
 
 		need += fastopen->cookie.exp ? TCPOLEN_EXP_FASTOPEN_BASE :
-					       TCPOLEN_FASTOPEN_BASE;
+			TCPOLEN_FASTOPEN_BASE;
 		need = (need + 3) & ~3U;  /* Align to 32 bits */
 		if (remaining >= need) {
 			opts->options |= OPTION_FAST_OPEN_COOKIE;
@@ -835,7 +840,7 @@ static unsigned int tcp_syn_options(struct sock *sk, struct sk_buff *skb,
 
 /* Set up TCP options for SYN-ACKs. */
 static unsigned int tcp_synack_options(const struct sock *sk,
-               struct request_sock *req,
+				       struct request_sock *req,
 				       unsigned int mss, struct sk_buff *skb,
 				       struct tcp_out_options *opts,
 				       const struct tcp_md5sig_key *md5,
@@ -844,9 +849,9 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 	struct inet_request_sock *ireq = inet_rsk(req);
 	unsigned int remaining = MAX_TCP_OPTION_SPACE;
 #ifdef CONFIG_SYN_CHALLENGE
-  struct tcpch_challenge *chlg;
-  const struct net *net = sock_net (sk);
-  u32 ch_ts = 0;
+	struct tcpch_challenge *chlg;
+	const struct net *net = sock_net (sk);
+	u32 ch_ts = 0;
 #endif
 
 #ifdef CONFIG_TCP_MD5SIG
@@ -879,37 +884,37 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 		remaining -= TCPOLEN_TSTAMP_ALIGNED;
 	}
 
-  /* want_challenge should always take precedence over everything else
-   * in the setup */
+	/* want_challenge should always take precedence over everything else
+	 * in the setup */
 #ifdef CONFIG_SYN_COOKIES
-  if (unlikely(want_challenge)) {
-    /* build the challenge here, can use skb->skb_mstamp
-     * for the time stamp to build the challenge
-     */
-    /* optimize by using the TCP options' own timestamp */
-    if (likely(ireq->tstamp_ok))
-        ch_ts = tcp_skb_timestamp(skb) + tcp_rsk(req)->ts_off;
+	if (unlikely(want_challenge)) {
+		/* build the challenge here, can use skb->skb_mstamp
+		 * for the time stamp to build the challenge
+		 */
+		/* optimize by using the TCP options' own timestamp */
+		if (likely(ireq->tstamp_ok))
+			ch_ts = tcp_skb_timestamp(skb) + tcp_rsk(req)->ts_off;
 
-    chlg = tcpch_generate_challenge (skb, ireq, net->ipv4.sysctl_tcp_challenge_len,
-            net->ipv4.sysctl_tcp_challenge_nz,
-            net->ipv4.sysctl_tcp_challenge_diff,
-            ch_ts);
-    chlg->opt_ts = ireq->tstamp_ok;
-    pr_debug ("Generated new challenge!\n");
+		chlg = tcpch_generate_challenge (skb, ireq, net->ipv4.sysctl_tcp_challenge_len,
+						 net->ipv4.sysctl_tcp_challenge_nz,
+						 net->ipv4.sysctl_tcp_challenge_diff,
+						 ch_ts);
+		chlg->opt_ts = ireq->tstamp_ok;
+		pr_debug ("Generated new challenge!\n");
 
-    if ( unlikely (IS_ERR(chlg)) ) {
-      pr_debug ("Failed to initialize challenge.\n");
-      return -1;
-    } else {
-      __NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGESENT);
-    }
+		if ( unlikely (IS_ERR(chlg)) ) {
+			pr_debug ("Failed to initialize challenge.\n");
+			return -1;
+		} else {
+			__NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGESENT);
+		}
 
-    opts->options |= OPTION_SYN_CHALLENGE;
-    opts->chlg = chlg;
-    opts->ctype = SYN_CHALLENGE;
-    /* tcpch_get_length returns length aligned to 32 bits */
-    remaining -= tcpch_get_length (chlg);
-  }
+		opts->options |= OPTION_SYN_CHALLENGE;
+		opts->chlg = chlg;
+		opts->ctype = SYN_CHALLENGE;
+		/* tcpch_get_length returns length aligned to 32 bits */
+		remaining -= tcpch_get_length (chlg);
+	}
 #endif
 
 	if (likely(ireq->sack_ok) && remaining >= TCPOLEN_SACKPERM_ALIGNED) {
@@ -921,7 +926,7 @@ static unsigned int tcp_synack_options(const struct sock *sk,
 		u32 need = foc->len;
 
 		need += foc->exp ? TCPOLEN_EXP_FASTOPEN_BASE :
-				   TCPOLEN_FASTOPEN_BASE;
+			TCPOLEN_FASTOPEN_BASE;
 		need = (need + 3) & ~3U;  /* Align to 32 bits */
 		if (remaining >= need) {
 			opts->options |= OPTION_FAST_OPEN_COOKIE;
@@ -937,8 +942,8 @@ static unsigned int tcp_synack_options(const struct sock *sk,
  * final wire format yet.
  */
 static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb,
-					struct tcp_out_options *opts,
-					struct tcp_md5sig_key **md5)
+					    struct tcp_out_options *opts,
+					    struct tcp_md5sig_key **md5)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int size = 0;
@@ -1287,17 +1292,17 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 		tcp_options_size = tcp_syn_options(sk, skb, &opts, &md5);
 	else
 #ifdef CONFIG_SYN_CHALLENGE
-  if (unlikely(tp->sol && tp->saw_challenge)) {
-    tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
-                &md5);
-    tp->saw_challenge = 0;
+		if (unlikely(tp->sol && tp->saw_challenge)) {
+			tcp_options_size = tcp_ack_solution_options(sk, skb, &opts,
+								    &md5);
+			tp->saw_challenge = 0;
 
-    pr_debug ("tcp_options_size is %d\n", tcp_options_size);
-  }
-  else
+			pr_debug ("tcp_options_size is %d\n", tcp_options_size);
+		}
+		else
 #endif
-		tcp_options_size = tcp_established_options(sk, skb, &opts,
-							   &md5);
+			tcp_options_size = tcp_established_options(sk, skb, &opts,
+								   &md5);
 	tcp_header_size = tcp_options_size + sizeof(struct tcphdr);
 
 	/* if no packet is in qdisc/device queue, then allow XPS to select
@@ -1683,7 +1688,7 @@ static inline int __tcp_mtu_to_mss(struct sock *sk, int pmtu)
 
 	/* Calculate base mss without TCP options:
 	   It is MMS_S - sizeof(tcphdr) of rfc1122
-	 */
+	   */
 	mss_now = pmtu - icsk->icsk_af_ops->net_header_len - sizeof(struct tcphdr);
 
 	/* IPv6 adds a frag_hdr in case RTAX_FEATURE_ALLFRAG is set */
@@ -1712,7 +1717,7 @@ int tcp_mtu_to_mss(struct sock *sk, int pmtu)
 {
 	/* Subtract TCP options size, not including SACKs */
 	return __tcp_mtu_to_mss(sk, pmtu) -
-	       (tcp_sk(sk)->tcp_header_len - sizeof(struct tcphdr));
+		(tcp_sk(sk)->tcp_header_len - sizeof(struct tcphdr));
 }
 
 /* Inverse of above */
@@ -1723,9 +1728,9 @@ int tcp_mss_to_mtu(struct sock *sk, int mss)
 	int mtu;
 
 	mtu = mss +
-	      tp->tcp_header_len +
-	      icsk->icsk_ext_hdr_len +
-	      icsk->icsk_af_ops->net_header_len;
+		tp->tcp_header_len +
+		icsk->icsk_ext_hdr_len +
+		icsk->icsk_af_ops->net_header_len;
 
 	/* IPv6 adds a frag_hdr in case RTAX_FEATURE_ALLFRAG is set */
 	if (icsk->icsk_af_ops->net_frag_header_len) {
@@ -1747,7 +1752,7 @@ void tcp_mtup_init(struct sock *sk)
 
 	icsk->icsk_mtup.enabled = net->ipv4.sysctl_tcp_mtu_probing > 1;
 	icsk->icsk_mtup.search_high = tp->rx_opt.mss_clamp + sizeof(struct tcphdr) +
-			       icsk->icsk_af_ops->net_header_len;
+		icsk->icsk_af_ops->net_header_len;
 	icsk->icsk_mtup.search_low = tcp_mss_to_mtu(sk, net->ipv4.sysctl_tcp_base_mss);
 	icsk->icsk_mtup.probe_size = 0;
 	if (icsk->icsk_mtup.enabled)
@@ -1776,7 +1781,7 @@ EXPORT_SYMBOL(tcp_mtup_init);
 
    NOTE2. inet_csk(sk)->icsk_pmtu_cookie and tp->mss_cache
    are READ ONLY outside this function.		--ANK (980731)
- */
+   */
 unsigned int tcp_sync_mss(struct sock *sk, u32 pmtu)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -1820,7 +1825,7 @@ unsigned int tcp_current_mss(struct sock *sk)
 	}
 
 	header_len = tcp_established_options(sk, NULL, &opts, &md5) +
-		     sizeof(struct tcphdr);
+		sizeof(struct tcphdr);
 	/* The mss_cache is sized based on tp->tcp_header_len, which assumes
 	 * some common options. If this is an odd packet (because we have SACK
 	 * blocks etc) then our calculated header_len will be different, and
@@ -2318,7 +2323,7 @@ static int tcp_mtu_probe(struct sock *sk)
 	 */
 	mss_now = tcp_current_mss(sk);
 	probe_size = tcp_mtu_to_mss(sk, (icsk->icsk_mtup.search_high +
-				    icsk->icsk_mtup.search_low) >> 1);
+					 icsk->icsk_mtup.search_low) >> 1);
 	size_needed = probe_size + (tp->reordering + 1) * tp->mss_cache;
 	interval = icsk->icsk_mtup.search_high - icsk->icsk_mtup.search_low;
 	/* When misfortune happens, we are reprobing actively,
@@ -2326,7 +2331,7 @@ static int tcp_mtu_probe(struct sock *sk)
 	 * probing process by not resetting search range to its orignal.
 	 */
 	if (probe_size > tcp_mtu_to_mss(sk, icsk->icsk_mtup.search_high) ||
-		interval < net->ipv4.sysctl_tcp_probe_threshold) {
+	    interval < net->ipv4.sysctl_tcp_probe_threshold) {
 		/* Check whether enough time has elaplased for
 		 * another round of probing.
 		 */
@@ -2389,7 +2394,7 @@ static int tcp_mtu_probe(struct sock *sk)
 			sk_wmem_free_skb(sk, skb);
 		} else {
 			TCP_SKB_CB(nskb)->tcp_flags |= TCP_SKB_CB(skb)->tcp_flags &
-						   ~(TCPHDR_FIN|TCPHDR_PSH);
+				~(TCPHDR_FIN|TCPHDR_PSH);
 			if (!skb_shinfo(skb)->nr_frags) {
 				skb_pull(skb, copy);
 				if (skb->ip_summed != CHECKSUM_PARTIAL)
@@ -2431,7 +2436,7 @@ static int tcp_mtu_probe(struct sock *sk)
 static bool tcp_pacing_check(const struct sock *sk)
 {
 	return tcp_needs_internal_pacing(sk) &&
-	       hrtimer_active(&tcp_sk(sk)->pacing_timer);
+		hrtimer_active(&tcp_sk(sk)->pacing_timer);
 }
 
 /* TCP Small Queues :
@@ -2672,7 +2677,7 @@ bool tcp_schedule_loss_probe(struct sock *sk)
 		return false;
 
 	if ((tp->snd_cwnd > tcp_packets_in_flight(tp)) &&
-	     tcp_send_head(sk))
+	    tcp_send_head(sk))
 		return false;
 
 	/* Probe timeout is at least 1.5*rtt + TCP_DELACK_MAX to account
@@ -3146,7 +3151,7 @@ int __tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb, int segs)
 		skb->skb_mstamp = tp->tcp_mstamp;
 		nskb = __pskb_copy(skb, MAX_TCP_HEADER, GFP_ATOMIC);
 		err = nskb ? tcp_transmit_skb(sk, nskb, 0, GFP_ATOMIC) :
-			     -ENOBUFS;
+			-ENOBUFS;
 	} else {
 		err = tcp_transmit_skb(sk, skb, 1, GFP_ATOMIC);
 	}
@@ -3422,7 +3427,7 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	int tcp_header_size;
 	struct tcphdr *th;
 	int mss;
-  bool want_cookie = false;
+	bool want_cookie = false;
 
 	skb = alloc_skb(MAX_TCP_HEADER, GFP_ATOMIC);
 	if (unlikely(!skb)) {
@@ -3441,14 +3446,14 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 		 * to avoid false sharing.
 		 */
 		break;
-  case TCP_SYNACK_CHALLENGE:
+	case TCP_SYNACK_CHALLENGE:
 		/* Under synflood, we do not attach skb to a socket,
 		 * to avoid false sharing.
 		 */
 #ifdef CONFIG_SYN_CHALLENGE
-    want_cookie = true;
+		want_cookie = true;
 #endif
-    break;
+		break;
 	case TCP_SYNACK_FASTOPEN:
 		/* sk is a const pointer, because we want to express multiple
 		 * cpu might call us concurrently.
@@ -3475,7 +3480,7 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 #endif
 	skb_set_hash(skb, tcp_rsk(req)->txhash, PKT_HASH_TYPE_L4);
 	tcp_header_size = tcp_synack_options(sk, req, mss, skb, &opts, md5, foc, want_cookie) +
-			  sizeof(*th);
+		sizeof(*th);
 
 	skb_push(skb, tcp_header_size);
 	skb_reset_transport_header(skb);
@@ -3508,17 +3513,17 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	/* Okay, we have all we need - do the md5 hash if needed */
 	if (md5)
 		tcp_rsk(req)->af_specific->calc_md5_hash(opts.hash_location,
-					       md5, req_to_sk(req), skb);
+							 md5, req_to_sk(req), skb);
 	rcu_read_unlock();
 #endif
 
 #ifdef CONFIG_SYN_CHALLENGE
-  /* free up the create challenge since it is no longer needed */
-  if (opts.chlg)
-    {
-      tcpch_free_challenge (opts.chlg);
-      opts.chlg = 0;
-    }
+	/* free up the create challenge since it is no longer needed */
+	if (opts.chlg)
+	{
+		tcpch_free_challenge (opts.chlg);
+		opts.chlg = 0;
+	}
 #endif
 
 	/* Do not fool tcpdump (if any), clean our debris */
@@ -3754,7 +3759,7 @@ int tcp_connect(struct sock *sk)
 
 	/* Send off SYN; include data in Fast Open. */
 	err = tp->fastopen_req ? tcp_send_syn_data(sk, buff) :
-	      tcp_transmit_skb(sk, buff, 1, sk->sk_allocation);
+		tcp_transmit_skb(sk, buff, 1, sk->sk_allocation);
 	if (err == -ECONNREFUSED)
 		return err;
 
@@ -3877,7 +3882,7 @@ void tcp_send_ack_sol(struct sock *sk, struct tcpch_solution_head *sol)
 
 	if (!sol)
 		return tcp_send_ack(sk);
-	
+
 	pr_debug ("Sending ACK packet with solution in it!\n");
 
 	/* If we have been reset, we may not send again. */
@@ -3907,7 +3912,7 @@ void tcp_send_ack_sol(struct sock *sk, struct tcpch_solution_head *sol)
 	/* We do not want pure acks influencing TCP Small Queues or fq/pacing
 	 * too much.
 	 * SKB_TRUESIZE(max(1 .. 66, MAX_TCP_HEADER)) is unfortunately ~784
-	skb_set_tcp_pure_ack(buff);
+	 skb_set_tcp_pure_ack(buff);
 	 */
 
 	/* Send it off, this clears delayed acks for us. */

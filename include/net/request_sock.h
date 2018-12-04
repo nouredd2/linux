@@ -194,7 +194,7 @@ struct priority_request_sock_queue {
 	 */
 	u32 max_size; /* = 1024; */
 	u32 size; /*  = 1; */
-	struct request_sock *queue[1024];
+	struct request_sock *queue[4096];
 };
 #endif
 

@@ -2542,6 +2542,7 @@ static int __net_init tcp_sk_init(struct net *net)
 	net->ipv4.sysctl_tcp_challenge_diff = TCPCH_DEFAULT_NDIFF;
 	net->ipv4.sysctl_tcp_challenge_len = TCPCH_DEFAULT_LEN;
 	net->ipv4.sysctl_tcp_challenge_timeout = TCPCH_DEFAULT_TO;
+	net->ipv4.sysctl_tcp_challenge_timer = TCPCH_DEFAULT_TIMER;
 #endif
 	net->ipv4.sysctl_tcp_reordering = TCP_FASTRETRANS_THRESH;
 	net->ipv4.sysctl_tcp_retries1 = TCP_RETR1;

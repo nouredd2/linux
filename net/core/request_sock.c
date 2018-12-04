@@ -35,7 +35,7 @@
  * Note : Dont forget somaxconn that may limit backlog too.
  */
 
-#define DSN_MAX_SIZE 1024
+#define DSN_MAX_SIZE 4096
 void reqsk_queue_alloc(struct request_sock_queue *queue)
 {
 #ifdef CONFIG_REQSK_PRIORITY_QUEUE

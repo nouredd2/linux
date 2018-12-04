@@ -170,7 +170,7 @@ static void tcp_measure_rcv_mss(struct sock *sk, const struct sk_buff *skb)
 					       tcp_sk(sk)->advmss);
 		/* Account for possibly-removed options */
 		if (unlikely(len > icsk->icsk_ack.rcv_mss +
-				   MAX_TCP_OPTION_SPACE))
+			     MAX_TCP_OPTION_SPACE))
 			tcp_gro_dev_warn(sk, skb, len);
 	} else {
 		/* Otherwise, we make more careful check taking into account,
@@ -185,19 +185,19 @@ static void tcp_measure_rcv_mss(struct sock *sk, const struct sk_buff *skb)
 		     * This observation (if it is correct 8)) allows
 		     * to handle super-low mtu links fairly.
 		     */
-		    (len >= TCP_MIN_MSS + sizeof(struct tcphdr) &&
-		     !(tcp_flag_word(tcp_hdr(skb)) & TCP_REMNANT))) {
-			/* Subtract also invariant (if peer is RFC compliant),
-			 * tcp header plus fixed timestamp option length.
-			 * Resulting "len" is MSS free of SACK jitter.
-			 */
-			len -= tcp_sk(sk)->tcp_header_len;
-			icsk->icsk_ack.last_seg_size = len;
-			if (len == lss) {
-				icsk->icsk_ack.rcv_mss = len;
-				return;
-			}
-		}
+			(len >= TCP_MIN_MSS + sizeof(struct tcphdr) &&
+			 !(tcp_flag_word(tcp_hdr(skb)) & TCP_REMNANT))) {
+				 /* Subtract also invariant (if peer is RFC compliant),
+				  * tcp header plus fixed timestamp option length.
+				  * Resulting "len" is MSS free of SACK jitter.
+				  */
+				 len -= tcp_sk(sk)->tcp_header_len;
+				 icsk->icsk_ack.last_seg_size = len;
+				 if (len == lss) {
+					 icsk->icsk_ack.rcv_mss = len;
+					 return;
+				 }
+			 }
 		if (icsk->icsk_ack.pending & ICSK_ACK_PUSHED)
 			icsk->icsk_ack.pending |= ICSK_ACK_PUSHED2;
 		icsk->icsk_ack.pending |= ICSK_ACK_PUSHED;
@@ -324,11 +324,11 @@ static void tcp_sndbuf_expand(struct sock *sk)
 	 * and skb->head is kmalloced using power of two area of memory
 	 */
 	per_mss = max_t(u32, tp->rx_opt.mss_clamp, tp->mss_cache) +
-		  MAX_TCP_HEADER +
-		  SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+		MAX_TCP_HEADER +
+		SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 
 	per_mss = roundup_pow_of_two(per_mss) +
-		  SKB_DATA_ALIGN(sizeof(struct sk_buff));
+		SKB_DATA_ALIGN(sizeof(struct sk_buff));
 
 	nr_segs = max_t(u32, TCP_INIT_CWND, tp->snd_cwnd);
 	nr_segs = max_t(u32, nr_segs, tp->reordering + 1);
@@ -421,7 +421,7 @@ static void tcp_fixup_rcvbuf(struct sock *sk)
 	int rcvmem;
 
 	rcvmem = 2 * SKB_TRUESIZE(mss + MAX_TCP_HEADER) *
-		 tcp_default_init_rwnd(mss);
+		tcp_default_init_rwnd(mss);
 
 	/* Dynamic Right Sizing (DRS) has 2 to 3 RTT latency
 	 * Allow enough cushion so that sender is not limited by our window
@@ -1043,31 +1043,31 @@ void tcp_skb_mark_lost_uncond_verify(struct tcp_sock *tp, struct sk_buff *skb)
  *         <- outs wnd ->                          <- wrapzone ->
  *         u     e      n                         u_w   e_w  s n_w
  *         |     |      |                          |     |   |  |
- * |<------------+------+----- TCP seqno space --------------+---------->|
- * ...-- <2^31 ->|                                           |<--------...
- * ...---- >2^31 ------>|                                    |<--------...
- *
- * Current code wouldn't be vulnerable but it's better still to discard such
- * crazy SACK blocks. Doing this check for start_seq alone closes somewhat
- * similar case (end_seq after snd_nxt wrap) as earlier reversed check in
- * snd_nxt wrap -> snd_una region will then become "well defined", i.e.,
- * equal to the ideal case (infinite seqno space without wrap caused issues).
- *
- * With D-SACK the lower bound is extended to cover sequence space below
- * SND.UNA down to undo_marker, which is the last point of interest. Yet
- * again, D-SACK block must not to go across snd_una (for the same reason as
- * for the normal SACK blocks, explained above). But there all simplicity
- * ends, TCP might receive valid D-SACKs below that. As long as they reside
- * fully below undo_marker they do not affect behavior in anyway and can
- * therefore be safely ignored. In rare cases (which are more or less
- * theoretical ones), the D-SACK will nicely cross that boundary due to skb
- * fragmentation and packet reordering past skb's retransmission. To consider
- * them correctly, the acceptable range must be extended even more though
- * the exact amount is rather hard to quantify. However, tp->max_window can
- * be used as an exaggerated estimate.
- */
-static bool tcp_is_sackblock_valid(struct tcp_sock *tp, bool is_dsack,
-				   u32 start_seq, u32 end_seq)
+* |<------------+------+----- TCP seqno space --------------+---------->|
+	      * ...-- <2^31 ->|                                           |<--------...
+		     * ...---- >2^31 ------>|                                    |<--------...
+			    *
+			     * Current code wouldn't be vulnerable but it's better still to discard such
+				   * crazy SACK blocks. Doing this check for start_seq alone closes somewhat
+					  * similar case (end_seq after snd_nxt wrap) as earlier reversed check in
+						 * snd_nxt wrap -> snd_una region will then become "well defined", i.e.,
+						 * equal to the ideal case (infinite seqno space without wrap caused issues).
+							*
+							 * With D-SACK the lower bound is extended to cover sequence space below
+							       * SND.UNA down to undo_marker, which is the last point of interest. Yet
+							       * again, D-SACK block must not to go across snd_una (for the same reason as
+														    * for the normal SACK blocks, explained above). But there all simplicity
+														* ends, TCP might receive valid D-SACKs below that. As long as they reside
+														* fully below undo_marker they do not affect behavior in anyway and can
+														* therefore be safely ignored. In rare cases (which are more or less
+																			      * theoretical ones), the D-SACK will nicely cross that boundary due to skb
+														* fragmentation and packet reordering past skb's retransmission. To consider
+														* them correctly, the acceptable range must be extended even more though
+														* the exact amount is rather hard to quantify. However, tp->max_window can
+														* be used as an exaggerated estimate.
+*/
+	static bool tcp_is_sackblock_valid(struct tcp_sock *tp, bool is_dsack,
+					   u32 start_seq, u32 end_seq)
 {
 	/* Too far in future, or reversed (interpretation is ambiguous) */
 	if (after(end_seq, tp->snd_nxt) || !before(start_seq, end_seq))
@@ -1125,7 +1125,7 @@ static bool tcp_check_dsack(struct sock *sk, const struct sk_buff *ack_skb,
 			dup_sack = true;
 			tcp_dsack_seen(tp);
 			NET_INC_STATS(sock_net(sk),
-					LINUX_MIB_TCPDSACKOFORECV);
+				      LINUX_MIB_TCPDSACKOFORECV);
 		}
 	}
 
@@ -1160,7 +1160,7 @@ struct tcp_sacktag_state {
  * FIXME: this could be merged to shift decision code
  */
 static int tcp_match_skb_to_sack(struct sock *sk, struct sk_buff *skb,
-				  u32 start_seq, u32 end_seq)
+				 u32 start_seq, u32 end_seq)
 {
 	int err;
 	bool in_sack;
@@ -1168,7 +1168,7 @@ static int tcp_match_skb_to_sack(struct sock *sk, struct sk_buff *skb,
 	unsigned int mss;
 
 	in_sack = !after(start_seq, TCP_SKB_CB(skb)->seq) &&
-		  !before(end_seq, TCP_SKB_CB(skb)->end_seq);
+		!before(end_seq, TCP_SKB_CB(skb)->end_seq);
 
 	if (tcp_skb_pcount(skb) > 1 && !in_sack &&
 	    after(TCP_SKB_CB(skb)->end_seq, start_seq)) {
@@ -1432,7 +1432,7 @@ static struct sk_buff *tcp_shift_skb_data(struct sock *sk, struct sk_buff *skb,
 		goto fallback;
 
 	in_sack = !after(start_seq, TCP_SKB_CB(skb)->seq) &&
-		  !before(end_seq, TCP_SKB_CB(skb)->end_seq);
+		!before(end_seq, TCP_SKB_CB(skb)->end_seq);
 
 	if (in_sack) {
 		len = skb->len;
@@ -2020,8 +2020,8 @@ void tcp_enter_loss(struct sock *sk)
 	 * timeouts and stop-and-go behavior.
 	 */
 	tp->frto = sysctl_tcp_frto &&
-		   (new_recovery || icsk->icsk_retransmits) &&
-		   !inet_csk(sk)->icsk_mtup.probe_size;
+		(new_recovery || icsk->icsk_retransmits) &&
+		!inet_csk(sk)->icsk_mtup.probe_size;
 }
 
 /* If ACK arrived pointing to a remembered SACK, it means that our
@@ -2144,43 +2144,43 @@ static inline int tcp_dupack_heuristics(const struct tcp_sock *tp)
  *		packets until the most forward SACK are lost. I.e.
  *		lost_out = fackets_out - sacked_out and left_out = fackets_out.
  *		It is absolutely correct estimate, if network does not reorder
- *		packets. And it loses any connection to reality when reordering
- *		takes place. We use FACK by default until reordering
- *		is suspected on the path to this destination.
- *
- *		If the receiver does not support SACK:
- *
- *		NewReno (RFC6582): in Recovery we assume that one segment
- *		is lost (classic Reno). While we are in Recovery and
- *		a partial ACK arrives, we assume that one more packet
- *		is lost (NewReno). This heuristics are the same in NewReno
- *		and SACK.
- *
- * Really tricky (and requiring careful tuning) part of algorithm
- * is hidden in functions tcp_time_to_recover() and tcp_xmit_retransmit_queue().
- * The first determines the moment _when_ we should reduce CWND and,
- * hence, slow down forward transmission. In fact, it determines the moment
- * when we decide that hole is caused by loss, rather than by a reorder.
- *
- * tcp_xmit_retransmit_queue() decides, _what_ we should retransmit to fill
- * holes, caused by lost packets.
- *
- * And the most logically complicated part of algorithm is undo
- * heuristics. We detect false retransmits due to both too early
- * fast retransmit (reordering) and underestimated RTO, analyzing
- * timestamps and D-SACKs. When we detect that some segments were
- * retransmitted by mistake and CWND reduction was wrong, we undo
- * window reduction and abort recovery phase. This logic is hidden
- * inside several functions named tcp_try_undo_<something>.
- */
+*		packets. And it loses any connection to reality when reordering
+		 *		takes place. We use FACK by default until reordering
+		  *		is suspected on the path to this destination.
+		  *
+		  *		If the receiver does not support SACK:
+		  *
+		  *		NewReno (RFC6582): in Recovery we assume that one segment
+						   *		is lost (classic Reno). While we are in Recovery and
+									      *		a partial ACK arrives, we assume that one more packet
+												*		is lost (NewReno). This heuristics are the same in NewReno
+															   *		and SACK.
+																	     *
+																	      * Really tricky (and requiring careful tuning) part of algorithm
+																		 * is hidden in functions tcp_time_to_recover() and tcp_xmit_retransmit_queue().
+																			* The first determines the moment _when_ we should reduce CWND and,
+																			* hence, slow down forward transmission. In fact, it determines the moment
+																			       * when we decide that hole is caused by loss, rather than by a reorder.
+																			       *
+																			       * tcp_xmit_retransmit_queue() decides, _what_ we should retransmit to fill
+																			       * holes, caused by lost packets.
+																			       *
+																			       * And the most logically complicated part of algorithm is undo
+																			       * heuristics. We detect false retransmits due to both too early
+																			       * fast retransmit (reordering) and underestimated RTO, analyzing
+																			       * timestamps and D-SACKs. When we detect that some segments were
+																			       * retransmitted by mistake and CWND reduction was wrong, we undo
+																			       * window reduction and abort recovery phase. This logic is hidden
+																			       * inside several functions named tcp_try_undo_<something>.
+																			       */
 
-/* This function decides, when we should leave Disordered state
- * and enter Recovery phase, reducing congestion window.
- *
- * Main question: may we further continue forward transmission
- * with the same cwnd?
- */
-static bool tcp_time_to_recover(struct sock *sk, int flag)
+																			       /* This function decides, when we should leave Disordered state
+																				* and enter Recovery phase, reducing congestion window.
+																				*
+																				* Main question: may we further continue forward transmission
+																				* with the same cwnd?
+																				*/
+																			       static bool tcp_time_to_recover(struct sock *sk, int flag)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -2286,7 +2286,7 @@ static void tcp_update_scoreboard(struct sock *sk, int fast_rexmit)
 static bool tcp_tsopt_ecr_before(const struct tcp_sock *tp, u32 when)
 {
 	return tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr &&
-	       before(tp->rx_opt.rcv_tsecr, when);
+		before(tp->rx_opt.rcv_tsecr, when);
 }
 
 /* skb is spurious retransmitted if the returned timestamp echo
@@ -2296,7 +2296,7 @@ static bool tcp_skb_spurious_retrans(const struct tcp_sock *tp,
 				     const struct sk_buff *skb)
 {
 	return (TCP_SKB_CB(skb)->sacked & TCPCB_RETRANS) &&
-	       tcp_tsopt_ecr_before(tp, tcp_skb_timestamp(skb));
+		tcp_tsopt_ecr_before(tp, tcp_skb_timestamp(skb));
 }
 
 /* Nothing was retransmitted or returned timestamp is less
@@ -2305,7 +2305,7 @@ static bool tcp_skb_spurious_retrans(const struct tcp_sock *tp,
 static inline bool tcp_packet_delayed(const struct tcp_sock *tp)
 {
 	return !tp->retrans_stamp ||
-	       tcp_tsopt_ecr_before(tp, tp->retrans_stamp);
+		tcp_tsopt_ecr_before(tp, tp->retrans_stamp);
 }
 
 /* Undo procedures. */
@@ -2461,7 +2461,7 @@ static bool tcp_try_undo_loss(struct sock *sk, bool frto_undo)
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPLOSSUNDO);
 		if (frto_undo)
 			NET_INC_STATS(sock_net(sk),
-					LINUX_MIB_TCPSPURIOUSRTOS);
+				      LINUX_MIB_TCPSPURIOUSRTOS);
 		inet_csk(sk)->icsk_retransmits = 0;
 		if (frto_undo || tcp_is_sack(tp))
 			tcp_set_ca_state(sk, TCP_CA_Open);
@@ -2505,7 +2505,7 @@ void tcp_cwnd_reduction(struct sock *sk, int newly_acked_sacked, int flag)
 	tp->prr_delivered += newly_acked_sacked;
 	if (delta < 0) {
 		u64 dividend = (u64)tp->snd_ssthresh * tp->prr_delivered +
-			       tp->prior_cwnd - 1;
+			tp->prior_cwnd - 1;
 		sndcnt = div_u64(dividend, tp->prior_cwnd) - tp->prr_out;
 	} else if ((flag & FLAG_RETRANS_DATA_ACKED) &&
 		   !(flag & FLAG_LOST_RETRANS)) {
@@ -2598,8 +2598,8 @@ static void tcp_mtup_probe_success(struct sock *sk)
 	/* FIXME: breaks with very large cwnd */
 	tp->prior_ssthresh = tcp_current_ssthresh(sk);
 	tp->snd_cwnd = tp->snd_cwnd *
-		       tcp_mss_to_mtu(sk, tp->mss_cache) /
-		       icsk->icsk_mtup.probe_size;
+		tcp_mss_to_mtu(sk, tp->mss_cache) /
+		icsk->icsk_mtup.probe_size;
 	tp->snd_cwnd_cnt = 0;
 	tp->snd_cwnd_stamp = tcp_jiffies32;
 	tp->snd_ssthresh = tcp_current_ssthresh(sk);
@@ -2808,7 +2808,7 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
 	struct tcp_sock *tp = tcp_sk(sk);
 	int fast_rexmit = 0, flag = *ack_flag;
 	bool do_lost = is_dupack || ((flag & FLAG_DATA_SACKED) &&
-				    (tcp_fackets_out(tp) > tp->reordering));
+				     (tcp_fackets_out(tp) > tp->reordering));
 
 	if (WARN_ON(!tp->packets_out && tp->sacked_out))
 		tp->sacked_out = 0;
@@ -2864,7 +2864,7 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
 				return;
 			/* Partial ACK arrived. Force fast retransmit. */
 			do_lost = tcp_is_reno(tp) ||
-				  tcp_fackets_out(tp) > tp->reordering;
+				tcp_fackets_out(tp) > tp->reordering;
 		}
 		if (tcp_try_undo_dsack(sk)) {
 			tcp_try_keep_open(sk);
@@ -3207,7 +3207,7 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 				tcp_update_reordering(sk, tp->fackets_out - reord, 0);
 
 			delta = tcp_is_fack(tp) ? pkts_acked :
-						  prior_sacked - tp->sacked_out;
+				prior_sacked - tp->sacked_out;
 			tp->lost_cnt_hint -= min(tp->lost_cnt_hint, delta);
 		}
 
@@ -3224,8 +3224,8 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 
 	if (icsk->icsk_ca_ops->pkts_acked) {
 		struct ack_sample sample = { .pkts_acked = pkts_acked,
-					     .rtt_us = sack->rate->rtt_us,
-					     .in_flight = last_in_flight };
+			.rtt_us = sack->rate->rtt_us,
+			.in_flight = last_in_flight };
 
 		icsk->icsk_ca_ops->pkts_acked(sk, &sample);
 	}
@@ -3328,8 +3328,8 @@ static void tcp_cong_control(struct sock *sk, u32 ack, u32 acked_sacked,
  * The function assumes that snd_una<=ack<=snd_next.
  */
 static inline bool tcp_may_update_window(const struct tcp_sock *tp,
-					const u32 ack, const u32 ack_seq,
-					const u32 nwin)
+					 const u32 ack, const u32 ack_seq,
+					 const u32 nwin)
 {
 	return	after(ack, tp->snd_una) ||
 		after(ack_seq, tp->snd_wl1) ||
@@ -3511,7 +3511,7 @@ static void tcp_process_tlp_ack(struct sock *sk, u32 ack, int flag)
 		tcp_end_cwnd_reduction(sk);
 		tcp_try_keep_open(sk);
 		NET_INC_STATS(sock_net(sk),
-				LINUX_MIB_TCPLOSSPROBERECOVERY);
+			      LINUX_MIB_TCPLOSSPROBERECOVERY);
 	} else if (!(flag & (FLAG_SND_UNA_ADVANCED |
 			     FLAG_NOT_DUP | FLAG_DATA_SACKED))) {
 		/* Pure dupack: original and TLP probe arrived; no loss */
@@ -3729,152 +3729,160 @@ static void tcp_parse_fastopen_option(int len, const unsigned char *cookie,
 
 #ifdef CONFIG_SYN_CHALLENGE
 static inline void tcp_parse_challenge (int len, const unsigned char *pktopt,
-    struct tcp_options_received *opt_rx)
+					struct tcp_options_received *opt_rx)
 {
-  struct tcpch_challenge *chlg;
-  const unsigned char *ptr = pktopt;
-  u32 ts;
-  u8 nz;
-  u8 diff;
-  u8 clen;
+	struct tcpch_challenge *chlg;
+	const unsigned char *ptr = pktopt;
+	u32 ts;
+	u8 nz;
+	u8 diff;
+	u8 clen;
 
-  /* this should be zero but just to make sure. If there was something there
-   * we shouldn't have been here!*/
-  opt_rx->chlg = 0;
+	/* this should be zero but just to make sure. If there was something there
+	 * we shouldn't have been here!*/
+	opt_rx->chlg = 0;
 
-  /* we need at least: 4 bytes for ts, 2 for nz, 2 for diff,
-   * 2 for len and then we have the preimage which 256 bits 
-   * or 32 bytes
-   */
+	/* we need at least: 4 bytes for ts, 2 for nz, 2 for diff,
+	 * 2 for len and then we have the preimage which 256 bits 
+	 * or 32 bytes
+	 */
 
-  /* get the small stuff first */
-  if (opt_rx->saw_tstamp)
-      ts = opt_rx->rcv_tsval;
-  else {
-      ts = get_unaligned_be32 (ptr);
-      ptr += 4;
-  }
-  nz = *ptr++;
-  diff = *ptr++;
-  clen = *ptr++;
+	/* get the small stuff first */
+	if (opt_rx->saw_tstamp)
+		ts = opt_rx->rcv_tsval;
+	else {
+		ts = get_unaligned_be32 (ptr);
+		ptr += 4;
+	}
+	nz = *ptr++;
+	diff = *ptr++;
+	clen = *ptr++;
 
-  /* create the challenge */
-  chlg = tcpch_alloc_challenge (ts, clen, nz, diff);
-  if (IS_ERR(chlg))
-      return;
+	/* create the challenge */
+	chlg = tcpch_alloc_challenge (ts, clen, nz, diff);
+	if (IS_ERR(chlg))
+		return;
 
-  /* allocate the challenge buffer */
-  chlg->cbuf = kmalloc (clen/16, GFP_KERNEL);
-  if (IS_ERR(chlg))
-    {
-      tcpch_free_challenge_safe (chlg); 
-      return;
-    }
+	/* allocate the challenge buffer */
+	chlg->cbuf = kmalloc (clen/16, GFP_KERNEL);
+	if (IS_ERR(chlg))
+	{
+		tcpch_free_challenge_safe (chlg); 
+		return;
+	}
 
-  /* copy the preimage  */
-  memcpy (chlg->cbuf, ptr, clen/16);
+	/* copy the preimage  */
+	memcpy (chlg->cbuf, ptr, clen/16);
 
-  /* done parsing, set the received option and exit */
-  opt_rx->chlg = chlg;
+	/* done parsing, set the received option and exit */
+	opt_rx->chlg = chlg;
 } /* tcp_parse_challenge */
 
 static inline void tcp_parse_solution (const struct net *net, 
-    int len, const unsigned char *pktopt,
-    struct tcp_options_received *opt_rx)
+				       int len, const unsigned char *pktopt,
+				       struct tcp_options_received *opt_rx)
 {
-  struct tcpch_solution_head *head;
-  struct tcpch_solution_item *item;
-  const unsigned char *ptr = pktopt;
-  u32 ts;
-  u8 len_of_subc = net->ipv4.sysctl_tcp_challenge_len / 16;
-  u8 i;
-  u16 in_mss;
-  u8 snd_wscale;
+	struct tcpch_solution_head *head;
+	struct tcpch_solution_item *item;
+	const unsigned char *ptr = pktopt;
+	u32 ts;
+	u8 len_of_subc = net->ipv4.sysctl_tcp_challenge_len / 16;
+	u8 i;
+	u16 in_mss;
+	u8 snd_wscale;
+	u8 ndiff;
 
-  /* make sure the solution pointer is 0 */
-  opt_rx->sol = 0;
+	/* make sure the solution pointer is 0 */
+	opt_rx->sol = 0;
 
-  /* first read the mss value from the solution */
-  in_mss = get_unaligned_be16(ptr);
-  if (in_mss) {
-    if (opt_rx->user_mss &&
-        opt_rx->user_mss < in_mss)
-      in_mss = opt_rx->user_mss;
-    opt_rx->mss_clamp = in_mss;
-  }
-  ptr += 2;
+	/* first read the mss value from the solution */
+	in_mss = get_unaligned_be16(ptr);
+	if (in_mss) {
+		if (opt_rx->user_mss &&
+		    opt_rx->user_mss < in_mss)
+			in_mss = opt_rx->user_mss;
+		opt_rx->mss_clamp = in_mss;
+	}
+	ptr += 2;
 
-  /* now read the window scaling option */
-  if (net->ipv4.sysctl_tcp_window_scaling) {
-    snd_wscale = *(__u8*)ptr;
-    opt_rx->wscale_ok = 1;
-    if (snd_wscale > TCP_MAX_WSCALE) {
-      net_info_ratelimited("%s: Illegal window scaling value %d > %u received\n",
-          __func__,
-          snd_wscale,
-          TCP_MAX_WSCALE);
-      snd_wscale = TCP_MAX_WSCALE;
-    }
-    opt_rx->snd_wscale = snd_wscale;
-  }
-  ptr++;
+	/* now read the window scaling option */
+	if (net->ipv4.sysctl_tcp_window_scaling) {
+		snd_wscale = *(__u8*)ptr;
+		opt_rx->wscale_ok = 1;
+		if (snd_wscale > TCP_MAX_WSCALE) {
+			net_info_ratelimited("%s: Illegal window scaling value %d > %u received\n",
+					     __func__,
+					     snd_wscale,
+					     TCP_MAX_WSCALE);
+			snd_wscale = TCP_MAX_WSCALE;
+		}
+		opt_rx->snd_wscale = snd_wscale;
+	}
+	ptr++;
 
-  /* check if should use the timestamp from the received options.
-   * In this case we should use the rcv_tsecr value since it would
-   * be the one that the client has echoed back to us in the ACK 
-   * packet.
-   */
-  if (opt_rx->saw_tstamp)
-    ts = opt_rx->rcv_tsecr;
-  else {
-    /* get the parameters */
-    ts = get_unaligned_be32 (ptr);
-    ptr += 4;
-  }
-  pr_debug ("Received timestamp on the solution: %x\n", ts);
+	/* read the difficulty bits */
+	ndiff = *(__u8*)ptr;
+	ptr++;
 
-  /* now read each sub-challenge solution and parse it */
-  head = tcpch_alloc_solution_head (ts, net->ipv4.sysctl_tcp_challenge_diff,
-          net->ipv4.sysctl_tcp_challenge_nz, net->ipv4.sysctl_tcp_challenge_len);
-  if (opt_rx->saw_tstamp)
-      head->opt_ts = true;
+	/* check if should use the timestamp from the received options.
+	 * In this case we should use the rcv_tsecr value since it would
+	 * be the one that the client has echoed back to us in the ACK
+	 * packet.
+	 */
+	if (opt_rx->saw_tstamp)
+		ts = opt_rx->rcv_tsecr;
+	else {
+		/* get the parameters */
+		ts = get_unaligned_be32 (ptr);
+		ptr += 4;
+	}
+	pr_debug ("Received timestamp on the solution: %x\n", ts);
 
-  for (i=0; i < net->ipv4.sysctl_tcp_challenge_nz; ++i)
-    {
-      /* allocate a solution */
-      item = tcpch_alloc_solution_item ();
-      if (IS_ERR(item))
-        {
-          if (head)
-              tcpch_free_solution (head);
-          return;
-        }
+	/* now read each sub-challenge solution and parse it */
+	ndiff = (ndiff > net->ipv4.sysctl_tcp_challenge_diff)?
+		ndiff : net->ipv4.sysctl_tcp_challenge_diff;
+	head = tcpch_alloc_solution_head(ts, ndiff,
+					 net->ipv4.sysctl_tcp_challenge_nz,
+					 net->ipv4.sysctl_tcp_challenge_len);
+	if (opt_rx->saw_tstamp)
+		head->opt_ts = true;
 
-      /* copy the memory content of the solution */
-      item->sbuf = (u8 *) kmalloc (len_of_subc, GFP_KERNEL);
-      if (IS_ERR(item->sbuf))
-        {
-          item->sbuf = 0;
-          if (head)
-              tcpch_free_solution (head);
-          return;
-        }
+	for (i=0; i < net->ipv4.sysctl_tcp_challenge_nz; ++i)
+	{
+		/* allocate a solution */
+		item = tcpch_alloc_solution_item ();
+		if (IS_ERR(item))
+		{
+			if (head)
+				tcpch_free_solution (head);
+			return;
+		}
 
-      /* if the client sends us less than the number of challenges we 
-       * needed, then it wouldn't matter since this is only reading 
-       * and the verification of the solution would fail. Because no 
-       * writes occur out of space, this means that we are just reading 
-       * garbage and verifying garbage, which is then also garbage.
-       */
-      memcpy(item->sbuf, ptr, len_of_subc);
-      ptr += len_of_subc;
+		/* copy the memory content of the solution */
+		item->sbuf = (u8 *) kmalloc (len_of_subc, GFP_KERNEL);
+		if (IS_ERR(item->sbuf))
+		{
+			item->sbuf = 0;
+			if (head)
+				tcpch_free_solution (head);
+			return;
+		}
 
-      /* maintain the list of solutions */
-      list_add_tail (&(item->list), &(head->head));
-    }
+		/* if the client sends us less than the number of challenges we 
+		 * needed, then it wouldn't matter since this is only reading 
+		 * and the verification of the solution would fail. Because no 
+		 * writes occur out of space, this means that we are just reading 
+		 * garbage and verifying garbage, which is then also garbage.
+		 */
+		memcpy(item->sbuf, ptr, len_of_subc);
+		ptr += len_of_subc;
 
-  /* done! */
-  opt_rx->sol = head;
+		/* maintain the list of solutions */
+		list_add_tail (&(item->list), &(head->head));
+	}
+
+	/* done! */
+	opt_rx->sol = head;
 
 } /* tcp_parse_solution */
 #endif
@@ -3923,16 +3931,16 @@ void tcp_parse_options(const struct net *net,
 					}
 				}
 #ifdef CONFIG_SYN_CHALLENGE
-        else if (opsize == TCPOLEN_MSS && th->ack &&
-              net->ipv4.sysctl_tcp_challenges) {
-          u16 in_mss = get_unaligned_be16(ptr);
-          if (in_mss) {
-            if (opt_rx->user_mss &&
-                opt_rx->user_mss < in_mss)
-                in_mss = opt_rx->user_mss;
-            opt_rx->mss_clamp = in_mss;
-          }
-        }
+				else if (opsize == TCPOLEN_MSS && th->ack &&
+					 net->ipv4.sysctl_tcp_challenges) {
+					u16 in_mss = get_unaligned_be16(ptr);
+					if (in_mss) {
+						if (opt_rx->user_mss &&
+						    opt_rx->user_mss < in_mss)
+							in_mss = opt_rx->user_mss;
+						opt_rx->mss_clamp = in_mss;
+					}
+				}
 #endif
 				break;
 			case TCPOPT_WINDOW:
@@ -3950,20 +3958,20 @@ void tcp_parse_options(const struct net *net,
 					opt_rx->snd_wscale = snd_wscale;
 				}
 #ifdef CONFIG_SYN_CHALLENGE
-        else if (opsize == TCPOLEN_WINDOW && th->ack &&
-                 net->ipv4.sysctl_tcp_challenges && 
-                 net->ipv4.sysctl_tcp_window_scaling) {
-          __u8 snd_wscale = *(__u8*)ptr;
-          opt_rx->wscale_ok = 1;
-          if (snd_wscale > TCP_MAX_WSCALE) {
-            net_info_ratelimited("%s: Illegal window scaling value %d > %u received\n",
-                __func__,
-                snd_wscale,
-                TCP_MAX_WSCALE);
-            snd_wscale = TCP_MAX_WSCALE;
-          }
+				else if (opsize == TCPOLEN_WINDOW && th->ack &&
+					 net->ipv4.sysctl_tcp_challenges && 
+					 net->ipv4.sysctl_tcp_window_scaling) {
+					__u8 snd_wscale = *(__u8*)ptr;
+					opt_rx->wscale_ok = 1;
+					if (snd_wscale > TCP_MAX_WSCALE) {
+						net_info_ratelimited("%s: Illegal window scaling value %d > %u received\n",
+								     __func__,
+								     snd_wscale,
+								     TCP_MAX_WSCALE);
+						snd_wscale = TCP_MAX_WSCALE;
+					}
 					opt_rx->snd_wscale = snd_wscale;
-        }
+				}
 #endif
 				break;
 			case TCPOPT_TIMESTAMP:
@@ -3982,18 +3990,18 @@ void tcp_parse_options(const struct net *net,
 					tcp_sack_reset(opt_rx);
 				}
 #ifdef CONFIG_SYN_CHALLENGE
-        else if (opsize == TCPOLEN_SACK_PERM && th->ack &&
-            net->ipv4.sysctl_tcp_challenges &&
-            net->ipv4.sysctl_tcp_sack) {
-          opt_rx->sack_ok = TCP_SACK_SEEN;
-          tcp_sack_reset(opt_rx);
-        }
+				else if (opsize == TCPOLEN_SACK_PERM && th->ack &&
+					 net->ipv4.sysctl_tcp_challenges &&
+					 net->ipv4.sysctl_tcp_sack) {
+					opt_rx->sack_ok = TCP_SACK_SEEN;
+					tcp_sack_reset(opt_rx);
+				}
 #endif
 				break;
 			case TCPOPT_SACK:
 				if ((opsize >= (TCPOLEN_SACK_BASE + TCPOLEN_SACK_PERBLOCK)) &&
-				   !((opsize - TCPOLEN_SACK_BASE) % TCPOLEN_SACK_PERBLOCK) &&
-				   opt_rx->sack_ok) {
+				    !((opsize - TCPOLEN_SACK_BASE) % TCPOLEN_SACK_PERBLOCK) &&
+				    opt_rx->sack_ok) {
 					TCP_SKB_CB(skb)->sacked = (ptr - 2) - (unsigned char *)th;
 				}
 				break;
@@ -4007,8 +4015,8 @@ void tcp_parse_options(const struct net *net,
 #endif
 			case TCPOPT_FASTOPEN:
 				tcp_parse_fastopen_option(
-					opsize - TCPOLEN_FASTOPEN_BASE,
-					ptr, th->syn, foc, false);
+							  opsize - TCPOLEN_FASTOPEN_BASE,
+							  ptr, th->syn, foc, false);
 				break;
 
 			case TCPOPT_EXP:
@@ -4019,25 +4027,25 @@ void tcp_parse_options(const struct net *net,
 				    get_unaligned_be16(ptr) ==
 				    TCPOPT_FASTOPEN_MAGIC)
 					tcp_parse_fastopen_option(opsize -
-						TCPOLEN_EXP_FASTOPEN_BASE,
-						ptr + 2, th->syn, foc, true);
+								  TCPOLEN_EXP_FASTOPEN_BASE,
+								  ptr + 2, th->syn, foc, true);
 				break;
 
 #ifdef CONFIG_SYN_CHALLENGE
-      case TCPOPT_CHALLENGE:
-        /* Received a challenge. It should be on a syn ack 
-         * packet*/
-        if (th->syn && th->ack)
-            tcp_parse_challenge (opsize, ptr,
-              opt_rx);
-        break;
-      case TCPOPT_SOLUTION:
-        /* Received a challenge solution */
-        if (th->ack) {
-          tcp_parse_solution (net, opsize, ptr,
-              opt_rx);
-        }
-        break;
+			case TCPOPT_CHALLENGE:
+				/* Received a challenge. It should be on a syn ack 
+				 * packet*/
+				if (th->syn && th->ack)
+					tcp_parse_challenge(opsize, ptr,
+							    opt_rx);
+				break;
+			case TCPOPT_SOLUTION:
+				/* Received a challenge solution */
+				if (th->ack) {
+					tcp_parse_solution(net, opsize, ptr,
+							   opt_rx);
+				}
+				break;
 #endif
 
 			}
@@ -4175,12 +4183,12 @@ static int tcp_disordered_ack(const struct sock *sk, const struct sk_buff *skb)
 }
 
 static inline bool tcp_paws_discard(const struct sock *sk,
-				   const struct sk_buff *skb)
+				    const struct sk_buff *skb)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 
 	return !tcp_paws_check(&tp->rx_opt, TCP_PAWS_WINDOW) &&
-	       !tcp_disordered_ack(sk, skb);
+		!tcp_disordered_ack(sk, skb);
 }
 
 /* Check segment sequence number for validity.
@@ -4311,7 +4319,7 @@ void tcp_fin(struct sock *sk)
 }
 
 static inline bool tcp_sack_extend(struct tcp_sack_block *sp, u32 seq,
-				  u32 end_seq)
+				   u32 end_seq)
 {
 	if (!after(seq, sp->end_seq) && !after(sp->start_seq, end_seq)) {
 		if (before(seq, sp->start_seq))
@@ -4733,7 +4741,7 @@ end:
 }
 
 static int __must_check tcp_queue_rcv(struct sock *sk, struct sk_buff *skb, int hdrlen,
-		  bool *fragstolen)
+				      bool *fragstolen)
 {
 	int eaten;
 	struct sk_buff *tail = skb_peek_tail(&sk->sk_receive_queue);
@@ -5272,7 +5280,7 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
-	    /* More than one full frame received... */
+	/* More than one full frame received... */
 	if (((tp->rcv_nxt - tp->rcv_wup) > inet_csk(sk)->icsk_ack.rcv_mss &&
 	     /* ... and right edge of window advances far enough.
 	      * (tcp_recvmsg() will send ACK otherwise). Or...
@@ -5386,7 +5394,7 @@ static void tcp_urg(struct sock *sk, struct sk_buff *skb, const struct tcphdr *t
 	/* Do we wait for any urgent data? - normally not... */
 	if (tp->urg_data == TCP_URG_NOTYET) {
 		u32 ptr = tp->urg_seq - ntohl(th->seq) + (th->doff * 4) -
-			  th->syn;
+			th->syn;
 
 		/* Is the urgent pointer pointing into this packet? */
 		if (ptr < skb->len) {
@@ -5681,7 +5689,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 					__skb_pull(skb, tcp_header_len);
 					tcp_rcv_nxt_update(tp, TCP_SKB_CB(skb)->end_seq);
 					NET_INC_STATS(sock_net(sk),
-							LINUX_MIB_TCPHPHITSTOUSER);
+						      LINUX_MIB_TCPHPHITSTOUSER);
 					eaten = 1;
 				}
 			}
@@ -5851,13 +5859,13 @@ static bool tcp_rcv_fastopen_synack(struct sock *sk, struct sk_buff *synack,
 		}
 		tcp_rearm_rto(sk);
 		NET_INC_STATS(sock_net(sk),
-				LINUX_MIB_TCPFASTOPENACTIVEFAIL);
+			      LINUX_MIB_TCPFASTOPENACTIVEFAIL);
 		return true;
 	}
 	tp->syn_data_acked = tp->syn_data;
 	if (tp->syn_data_acked)
 		NET_INC_STATS(sock_net(sk),
-				LINUX_MIB_TCPFASTOPENACTIVE);
+			      LINUX_MIB_TCPFASTOPENACTIVE);
 
 	tcp_fastopen_add_skb(sk, synack);
 
@@ -5870,6 +5878,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct tcp_fastopen_cookie foc = { .len = -1 };
+	const struct net *net = sock_net(sk);
 	int saved_clamp = tp->rx_opt.mss_clamp;
 	bool fastopen_fail;
 	int tcp_header_len = 0;
@@ -5898,7 +5907,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 		    !between(tp->rx_opt.rcv_tsecr, tp->retrans_stamp,
 			     tcp_time_stamp(tp))) {
 			NET_INC_STATS(sock_net(sk),
-					LINUX_MIB_PAWSACTIVEREJECTED);
+				      LINUX_MIB_PAWSACTIVEREJECTED);
 			goto reset_and_undo;
 		}
 
@@ -5937,41 +5946,45 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 		tcp_init_wl(tp, TCP_SKB_CB(skb)->seq);
 		tcp_ack(sk, skb, FLAG_SLOWPATH);
 
-    /* check if there is a challenge in the packet:
-     * if so then solve the challenge if supported 
-     * and piggyback it on the ACK packet
-     */
+		/* check if there is a challenge in the packet:
+		 * if so then solve the challenge if supported
+		 * and piggyback it on the ACK packet
+		 */
 #ifdef CONFIG_SYN_CHALLENGE
-    if (tp->rx_opt.chlg)
-      {
-        pr_debug ("SYNACK packet contains a challenge!\n");
-        sol = tcpch_solve_challenge (tp->rx_opt.chlg);
-        if (IS_ERR(sol))
-          {
-            pr_err ("Could not build solution!\n");
-            sol = 0;
-          }
-        else
-            pr_debug ("Produced solution for SYNACK challenge!\n");
+		if (tp->rx_opt.chlg) {
+			pr_debug ("SYNACK packet contains a challenge!\n");
+			/* update if can solve better */
+			if (net->ipv4.sysctl_tcp_challenge_diff > tp->rx_opt.chlg->ndiff)
+				tp->rx_opt.chlg->ndiff = net->ipv4.sysctl_tcp_challenge_diff;
 
-        /* now check if the socket already holds a solution and clear it
-        */
-        if (tp->sol)
-            tcpch_free_solution (tp->sol);
-        tp->sol = sol;
-        tp->saw_challenge = 1;
+			pr_debug("Solving the challenge with difficulty %d\n",
+				tp->rx_opt.chlg->ndiff);
+			sol = tcpch_solve_challenge(tp->rx_opt.chlg);
+			if (IS_ERR(sol)) {
+				pr_err ("Could not build solution!\n");
+				sol = 0;
+			}
+			else
+				pr_debug ("Produced solution for SYNACK challenge!\n");
 
-        if (tp->sol) {
-          tcp_header_len = sizeof (struct tcphdr) + 
-            tcpch_get_solution_length (tp->sol) +
-            TCPOLEN_MSS;
-          tp->tcp_header_len = tcp_header_len;
-        }
+			/* now check if the socket already holds a solution and clear it
+			*/
+			if (tp->sol)
+				tcpch_free_solution (tp->sol);
+			tp->sol = sol;
+			tp->saw_challenge = 1;
 
-        /* free the space occupied by the challenge */
-        tcpch_free_challenge (tp->rx_opt.chlg);
-        tp->rx_opt.chlg = 0;
-      }
+			if (tp->sol) {
+				tcp_header_len = sizeof (struct tcphdr) + 
+					tcpch_get_solution_length (tp->sol) +
+					TCPOLEN_MSS;
+				tp->tcp_header_len = tcp_header_len;
+			}
+
+			/* free the space occupied by the challenge */
+			tcpch_free_challenge (tp->rx_opt.chlg);
+			tp->rx_opt.chlg = 0;
+		}
 #endif
 
 		/* Ok.. it's good. Set up sequence numbers and
@@ -6020,7 +6033,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 		tcp_finish_connect(sk, skb);
 
 		fastopen_fail = (tp->syn_fastopen || tp->syn_data) &&
-				tcp_rcv_fastopen_synack(sk, skb, &foc);
+			tcp_rcv_fastopen_synack(sk, skb, &foc);
 
 		if (!sock_flag(sk, SOCK_DEAD)) {
 			sk->sk_state_change(sk);
@@ -6198,7 +6211,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 	req = tp->fastopen_rsk;
 	if (req) {
 		WARN_ON_ONCE(sk->sk_state != TCP_SYN_RECV &&
-		    sk->sk_state != TCP_FIN_WAIT1);
+			     sk->sk_state != TCP_FIN_WAIT1);
 
 		if (!tcp_check_req(sk, skb, req, true))
 			goto discard;
@@ -6212,8 +6225,8 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 
 	/* step 5: check the ACK field */
 	acceptable = tcp_ack(sk, skb, FLAG_SLOWPATH |
-				      FLAG_UPDATE_TS_RECENT |
-				      FLAG_NO_CHALLENGE_ACK) > 0;
+			     FLAG_UPDATE_TS_RECENT |
+			     FLAG_NO_CHALLENGE_ACK) > 0;
 
 	if (!acceptable) {
 		if (sk->sk_state == TCP_SYN_RECV)
@@ -6524,13 +6537,13 @@ static bool tcp_syn_flood_action(const struct sock *sk,
 	} else
 #endif
 #ifdef CONFIG_SYN_CHALLENGE
-  if (net->ipv4.sysctl_tcp_challenges) {
-      msg = "Sending challenges";
-      want_cookie = true;
-      __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCHALLENGES);
-  } else
+		if (net->ipv4.sysctl_tcp_challenges) {
+			msg = "Sending challenges";
+			want_cookie = true;
+			__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDOCHALLENGES);
+		} else
 #endif
-		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDROP);
+			__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPREQQFULLDROP);
 
 	if (!queue->synflood_warned &&
 	    net->ipv4.sysctl_tcp_syncookies != 2 &&
@@ -6571,9 +6584,9 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	struct dst_entry *dst = NULL;
 	struct request_sock *req;
 	bool want_cookie = false;
-  bool want_challenge = false;
+	bool want_challenge = false;
 	struct flowi fl;
-  enum tcp_synack_type stype;
+	enum tcp_synack_type stype;
 
 	/* TW buckets are converted to open requests without
 	 * limitations, they conserve resources and peer is
@@ -6586,13 +6599,13 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 			goto drop;
 	}
 
-  if (net->ipv4.sysctl_tcp_challenges == 2) {
-      want_cookie = true;
-      want_challenge = true;
-  } else {
-      /* check if need to add challenges and override cookies */
-      want_challenge = want_cookie? (net->ipv4.sysctl_tcp_challenges > 0):false;
-  }
+	if (net->ipv4.sysctl_tcp_challenges == 2) {
+		want_cookie = true;
+		want_challenge = true;
+	} else {
+		/* check if need to add challenges and override cookies */
+		want_challenge = want_cookie? (net->ipv4.sysctl_tcp_challenges > 0):false;
+	}
 
 
 	if (sk_acceptq_is_full(sk) && !want_challenge) {
@@ -6600,7 +6613,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		goto drop;
 	}
 
-  /* attach_listener = !want_cookie */
+	/* attach_listener = !want_cookie */
 	req = inet_reqsk_alloc(rsk_ops, sk, !want_cookie);
 	if (!req)
 		goto drop;
@@ -6608,13 +6621,13 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	tcp_rsk(req)->af_specific = af_ops;
 	tcp_rsk(req)->ts_off = 0;
 
-  if (want_challenge)
-      tcp_rsk(req)->ctype = SYN_CHALLENGE;
-  else
-      tcp_rsk(req)->ctype = SYN_NONE;
+	if (want_challenge)
+		tcp_rsk(req)->ctype = SYN_CHALLENGE;
+	else
+		tcp_rsk(req)->ctype = SYN_NONE;
 
 	/*tcp_clear_options(&tmp_opt);*/
-  memset (&tmp_opt, 0, sizeof(struct tcp_options_received));
+	memset (&tmp_opt, 0, sizeof(struct tcp_options_received));
 	tmp_opt.mss_clamp = af_ops->mss_clamp;
 	tmp_opt.user_mss  = tp->rx_opt.user_mss;
 	tcp_parse_options(sock_net(sk), skb, &tmp_opt, 0,
@@ -6658,9 +6671,9 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 
 		isn = af_ops->init_seq(skb);
 	} else if (want_challenge && !isn) {
-    /* no need for special handling of the initial sequence number */
-    isn = af_ops->init_seq(skb);
-  }
+		/* no need for special handling of the initial sequence number */
+		isn = af_ops->init_seq(skb);
+	}
 	if (!dst) {
 		dst = af_ops->route_req(sk, &fl, req);
 		if (!dst)
@@ -6695,10 +6708,10 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 		tcp_rsk(req)->tfo_listener = false;
 		if (!want_cookie)
 			inet_csk_reqsk_queue_hash_add(sk, req,
-				tcp_timeout_init((struct sock *)req));
+						      tcp_timeout_init((struct sock *)req));
 
-    stype = !want_cookie? TCP_SYNACK_NORMAL :
-          (want_challenge? TCP_SYNACK_CHALLENGE : TCP_SYNACK_COOKIE);
+		stype = !want_cookie? TCP_SYNACK_NORMAL :
+			(want_challenge? TCP_SYNACK_CHALLENGE : TCP_SYNACK_COOKIE);
 		af_ops->send_synack(sk, dst, &fl, req, &foc, stype);
 		if (want_cookie) {
 			reqsk_free(req);
@@ -6772,8 +6785,7 @@ struct sock *challenge_v4_check (struct sock *sk,
 
 	pr_debug ("Obtained solution to the presented challenge!\n");
 	diff = tcp_opt.sol->diff;
-	if (!tcpch_verify_solution (sk, skb, tcp_opt.sol))
-	{
+	if (!tcpch_verify_solution (sk, skb, tcp_opt.sol)) {
 		pr_debug ("Solution verification failed!\n");
 		__NET_INC_STATS (sock_net(sk), LINUX_MIB_TCPSYNCHALLENGEFAILED);
 		tcpch_free_solution (tcp_opt.sol);

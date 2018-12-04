@@ -305,8 +305,7 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
 
 	/* grab x from the challenge */
 	xbuf = chlg->cbuf;
-	if (! xbuf)
-	{
+	if (!xbuf) {
 		pr_err ("Empty challenge detected. Returning error!\n");
 		return ERR_PTR (-EINVAL);
 	}
@@ -314,28 +313,24 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
 	/* create z buffer to hold trials */
 	xlen = chlg->len / 16;
 	zbuf = (u8 *) kmalloc (xlen, GFP_KERNEL);
-	if (IS_ERR(zbuf))
-	{
+	if (IS_ERR(zbuf)) {
 		return ERR_PTR (-ENOMEM);
 	}
 
 	/* allocate some space for the hash */
 	dsize = crypto_shash_digestsize (alg);
 	trial = (u8 *) kmalloc (dsize, GFP_KERNEL);
-	if (IS_ERR(trial))
-	{
+	if (IS_ERR(trial)) {
 		return ERR_PTR(-ENOMEM);
 	}
 
 	head = tcpch_alloc_solution_head (ts, chlg->ndiff, chlg->nz, chlg->len);
-	for (i=0; i < chlg->nz; ++i)
-	{
+	for (i=0; i < chlg->nz; ++i) {
 		item = 0;
 		found = 0;
 		do {
 			err = crypto_shash_init (sdesc);
-			if (err < 0)
-			{
+			if (err < 0) {
 				pr_err ("tcpch: Failed toe init hash function!\n");
 				headerr = ERR_PTR(err);
 				goto out_err;
@@ -351,8 +346,7 @@ struct tcpch_solution_head *__solve_challenge (struct tcpch_challenge *chlg)
 			/* so now we have built x || i || zi, so hash it and compare */
 			memset(trial, 0, dsize);
 			err = crypto_shash_final (sdesc, trial);
-			if (err < 0)
-			{
+			if (err < 0) {
 				pr_err ("tcpch_solve_challenge: Failed to compute hash operation!\n");
 				headerr = ERR_PTR(err);
 				goto out_err;
@@ -605,7 +599,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 		if (err < 0)
 		{
 			pr_err ("[tcp_ch:] Failed to initialize sha256\n");
-			goto out_free_all; 
+			goto out_free_all;
 		}
 
 		/* build x || i || z */
@@ -616,7 +610,8 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 		err = crypto_shash_final (sdesc, digest);
 
 		/* compate the bits of the computed hash with x */
-		ret = __tcpch_compare_bits (digest, xbuf, net->ipv4.sysctl_tcp_challenge_diff);
+		ret = __tcpch_compare_bits (digest, xbuf, sol->diff);
+		/*net->ipv4.sysctl_tcp_challenge_diff);*/
 		if (ret != 0)
 		{
 			/* one of the sub puzzles failed */
@@ -635,8 +630,7 @@ int __verify_solution (const struct net *net, const struct iphdr *iph,
 	}
 
 	/* sanity check: remove after testing */
-	if (ret != 0)
-	{
+	if (ret != 0) {
 		pr_err ("[tcpch:] Something weird is happening in verify solution!\n");
 		goto out_free_all;
 	}
@@ -714,7 +708,8 @@ u32 tcpch_get_solution_length (struct tcpch_solution_head *sol)
 	need += 2;
 
 	/* add the mss and wscale */
-	need += 2 + 1;
+	/* add 1 more for the difficulty */
+	need += 2 + 1 + 1;
 
 	/* align to 32 bits */
 	need = (need + 3) & ~3U;

@@ -105,10 +105,10 @@ static int ipv4_local_port_range(struct ctl_table *table, int write,
 
 /* Validate changes from /proc interface. */
 static int ipv4_privileged_ports(struct ctl_table *table, int write,
-				void __user *buffer, size_t *lenp, loff_t *ppos)
+				 void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	struct net *net = container_of(table->data, struct net,
-	    ipv4.sysctl_ip_prot_sock);
+				       ipv4.sysctl_ip_prot_sock);
 	int ret;
 	int pports;
 	int range[2];
@@ -277,7 +277,7 @@ static int proc_tcp_fastopen_key(struct ctl_table *ctl, int write,
 	rcu_read_unlock();
 
 	snprintf(tbl.data, tbl.maxlen, "%08x-%08x-%08x-%08x",
-		user_key[0], user_key[1], user_key[2], user_key[3]);
+		 user_key[0], user_key[1], user_key[2], user_key[3]);
 	ret = proc_dostring(&tbl, write, buffer, lenp, ppos);
 
 	if (write && ret == 0) {
@@ -296,8 +296,8 @@ static int proc_tcp_fastopen_key(struct ctl_table *ctl, int write,
 
 bad_key:
 	pr_debug("proc FO key set 0x%x-%x-%x-%x <- 0x%s: %u\n",
-	       user_key[0], user_key[1], user_key[2], user_key[3],
-	       (char *)tbl.data, ret);
+		 user_key[0], user_key[1], user_key[2], user_key[3],
+		 (char *)tbl.data, ret);
 	kfree(tbl.data);
 	return ret;
 }
@@ -314,13 +314,13 @@ static void proc_configure_early_demux(int enabled, int protocol)
 	ipprot = rcu_dereference(inet_protos[protocol]);
 	if (ipprot)
 		ipprot->early_demux = enabled ? ipprot->early_demux_handler :
-						NULL;
+			NULL;
 
 #if IS_ENABLED(CONFIG_IPV6)
 	ip6prot = rcu_dereference(inet6_protos[protocol]);
 	if (ip6prot)
 		ip6prot->early_demux = enabled ? ip6prot->early_demux_handler :
-						 NULL;
+			NULL;
 #endif
 	rcu_read_unlock();
 }
@@ -1026,47 +1026,54 @@ static struct ctl_table ipv4_net_table[] = {
 	},
 #endif
 #ifdef CONFIG_SYN_CHALLENGE
-  {
-    .procname     = "tcp_challenges",
-    .data         = &init_net.ipv4.sysctl_tcp_challenges,
-    .maxlen       = sizeof(int),
-    .mode         = 0644,
-    .proc_handler = proc_dointvec
-  },
-  {
-    .procname     = "tcp_challenge_nz",
-    .data         = &init_net.ipv4.sysctl_tcp_challenge_nz,
-    .maxlen       = sizeof(int),
-    .mode         = 0644,
-    .proc_handler = proc_dointvec,
-    .extra1       = &tcp_challenge_min_nz,
-    .extra2       = &tcp_challenge_max_nz
-  },
-  {
-    .procname     = "tcp_challenge_len",
-    .data         = &init_net.ipv4.sysctl_tcp_challenge_len,
-    .maxlen       = sizeof(int),
-    .mode         = 0644,
-    .proc_handler = proc_dointvec,
-    .extra1       = &tcp_challenge_min_nz,
-    .extra2       = &tcp_challenge_max_nz
-  },
-  {
-    .procname     = "tcp_challenge_diff",
-    .data         = &init_net.ipv4.sysctl_tcp_challenge_diff,
-    .maxlen       = sizeof(int),
-    .mode         = 0644,
-    .proc_handler = proc_dointvec,
-    .extra1       = &tcp_challenge_min_diff,
-    .extra2       = &tcp_challenge_max_diff
-  },
-  {
-    .procname     = "tcp_challenge_timeout",
-    .data         = &init_net.ipv4.sysctl_tcp_challenge_timeout,
-    .maxlen       = sizeof(int),
-    .mode         = 0644,
-    .proc_handler = proc_dointvec,
-  },
+	{
+		.procname     = "tcp_challenges",
+		.data         = &init_net.ipv4.sysctl_tcp_challenges,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec
+	},
+	{
+		.procname     = "tcp_challenge_nz",
+		.data         = &init_net.ipv4.sysctl_tcp_challenge_nz,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+		.extra1       = &tcp_challenge_min_nz,
+		.extra2       = &tcp_challenge_max_nz
+	},
+	{
+		.procname     = "tcp_challenge_len",
+		.data         = &init_net.ipv4.sysctl_tcp_challenge_len,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+		.extra1       = &tcp_challenge_min_nz,
+		.extra2       = &tcp_challenge_max_nz
+	},
+	{
+		.procname     = "tcp_challenge_diff",
+		.data         = &init_net.ipv4.sysctl_tcp_challenge_diff,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+		.extra1       = &tcp_challenge_min_diff,
+		.extra2       = &tcp_challenge_max_diff
+	},
+	{
+		.procname     = "tcp_challenge_timeout",
+		.data         = &init_net.ipv4.sysctl_tcp_challenge_timeout,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+	},
+	{
+		.procname     = "tcp_challenge_timer",
+		.data	      = &init_net.ipv4.sysctl_tcp_challenge_timer,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+	},
 #endif
 	{
 		.procname	= "tcp_reordering",

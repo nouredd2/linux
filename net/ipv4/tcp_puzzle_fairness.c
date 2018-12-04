@@ -13,8 +13,7 @@
 #include <linux/hashtable.h>
 #include <linux/timer.h>
 #include <net/inet_connection_sock.h>
-
-#define EXPIRATION_MSECS 10000
+#include <net/sock.h>
 
 /** This structure will hold the entries in the hash table.
  * To deal with collisions, we must always save the key, which
@@ -40,7 +39,7 @@ void table_entry_timer_fn(unsigned long data)
 	struct tcp_pr_table_entry *entry = (struct tcp_pr_table_entry *)data;
 
 	/* timer has expired, remove the entry from the data */
-	pr_info("The timer has launched...\n");
+	pr_debug("The timer has launched...\n");
 	spin_lock(&entry->sk->pr_state_lock);
 	hash_del_rcu(&entry->en_link);
 	spin_unlock(&entry->sk->pr_state_lock);
@@ -82,6 +81,7 @@ u32 compute_weight(struct inet_connection_sock *sk, __be32 ip_addr, u32 diff)
 	/* TODO: add the magic in here and make beautiful things happen */
 	struct tcp_pr_table_entry *entry;
 	u32 count = 1;
+	int timer = sock_net((struct sock*)sk)->ipv4.sysctl_tcp_challenge_timer;
 
 	/* 1. lookup in the hash table */
 	entry = lookup_pr_table_entry(sk, ip_addr);
@@ -95,7 +95,7 @@ u32 compute_weight(struct inet_connection_sock *sk, __be32 ip_addr, u32 diff)
 		/* initialize the timer */
 		setup_timer(&entry->en_timer, table_entry_timer_fn,
 			    (unsigned long )entry);
-		mod_timer(&entry->en_timer, jiffies + msecs_to_jiffies(EXPIRATION_MSECS));
+		mod_timer(&entry->en_timer, jiffies + msecs_to_jiffies(timer));
 
 		pr_info("Creating new entry in the hash table\n");
 		spin_lock(&sk->pr_state_lock);
@@ -104,13 +104,13 @@ u32 compute_weight(struct inet_connection_sock *sk, __be32 ip_addr, u32 diff)
 	} else {
 		/* this updates the entry and we don't need to do anything else
 		 **/
-		pr_info("Entry found and now updating the count\n");
+		pr_debug("Entry found and now updating the count\n");
 		count = (u32) atomic_inc_return(&entry->req_count);
-		mod_timer(&entry->en_timer, jiffies + msecs_to_jiffies(EXPIRATION_MSECS));
+		mod_timer(&entry->en_timer, jiffies + msecs_to_jiffies(timer));
 	}
 
-	pr_info("Computed weight %d for ip address %pI4\n", diff/count, &ip_addr);
-	pr_info("  State = < %d > \n", count);
+	pr_debug("Computed weight %d for ip address %pI4\n", diff/count, &ip_addr);
+	pr_debug("  State = < %d > \n", count);
 	return diff / count > 0 ? diff/count : diff;
 }
 EXPORT_SYMBOL(compute_weight);
