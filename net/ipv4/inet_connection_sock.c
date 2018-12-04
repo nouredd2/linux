@@ -28,6 +28,10 @@
 #include <net/sock_reuseport.h>
 #include <net/addrconf.h>
 
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+extern void tcp_clear_priority_queue(struct sock *);
+#endif
+
 #ifdef INET_CSK_DEBUG
 const char inet_csk_timer_bug_msg[] = "inet_csk BUG: unknown timer value\n";
 EXPORT_SYMBOL(inet_csk_timer_bug_msg);
@@ -874,6 +878,11 @@ int inet_csk_listen_start(struct sock *sk, int backlog)
 	sk->sk_ack_backlog = 0;
 	inet_csk_delack_init(sk);
 
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	hash_init(icsk->pr_state_cache);
+	spin_lock_init(&icsk->pr_state_lock);
+#endif
+
 	/* There is race window here: we announce ourselves listening,
 	 * but this transition is still not validated by get_port().
 	 * It is OK, because this socket enters to hash table only
@@ -989,6 +998,10 @@ void inet_csk_listen_stop(struct sock *sk)
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct request_sock_queue *queue = &icsk->icsk_accept_queue;
 	struct request_sock *next, *req;
+
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	tcp_clear_priority_queue(sk);
+#endif
 
 	/* Following specs, it would be better either to send FIN
 	 * (and enter FIN-WAIT-1, it is normal close)

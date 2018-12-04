@@ -127,7 +127,7 @@ int sysctl_tcp_invalid_ratelimit __read_mostly = HZ/2;
 #define REXMIT_NEW	2 /* FRTO-style transmit of unsent/new packets */
 
 #ifdef CONFIG_REQSK_PRIORITY_QUEUE
-extern u32 compute_weight(struct tcp_sock *, __be32, u32);
+extern u32 compute_weight(struct inet_connection_sock *, __be32, u32);
 #endif
 
 
@@ -6851,14 +6851,14 @@ struct sock *challenge_v4_check (struct sock *sk,
 
 #ifdef CONFIG_REQSK_PRIORITY_QUEUE
 	/* set the request sock weight here */
-	req->weight = compute_weight(tcp_sk(sk), ip_hdr(skb)->saddr, (u32)diff);
+	req->weight = compute_weight(inet_csk(sk), ip_hdr(skb)->saddr, (u32)diff);
 #endif
 
 	/* Try to redo what tcp_v4_send_synack did. */
 
 	/* If using tcp_openreq_init_rwin, then these routines are done there
 	 * req->rsk_window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
-	 * tcp_ecn_create_request (req, skb, sk, &rt->dst); 
+	 * tcp_ecn_create_request (req, skb, sk, &rt->dst);
 	 */
 	tcp_openreq_init_rwin (req, sk, &rt->dst);
 	ireq->ecn_ok = cookie_ecn_ok(&tcp_opt, sock_net(sk), &rt->dst);

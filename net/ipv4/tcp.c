@@ -281,10 +281,6 @@
 #include <asm/ioctls.h>
 #include <net/busy_poll.h>
 
-#ifdef CONFIG_REQSK_PRIORITY_QUEUE
-extern void tcp_clear_priority_queue(struct sock *sk);
-#endif
-
 int sysctl_tcp_min_tso_segs __read_mostly = 2;
 
 int sysctl_tcp_autocorking __read_mostly = 1;
@@ -449,11 +445,6 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sysctl_tcp_rmem[1];
 
 	sk_sockets_allocated_inc(sk);
-
-#ifdef CONFIG_REQSK_PRIORITY_QUEUE
-	hash_init(tp->pr_state_cache);
-	spin_lock_init(&tp->pr_state_lock);
-#endif
 }
 EXPORT_SYMBOL(tcp_init_sock);
 
@@ -2331,9 +2322,6 @@ int tcp_disconnect(struct sock *sk, int flags)
 		sk->sk_err = ECONNRESET;
 
 	tcp_clear_xmit_timers(sk);
-#ifdef CONFIG_REQSK_PRIORITY_QUEUE
-	tcp_clear_priority_queue(sk);
-#endif
 	__skb_queue_purge(&sk->sk_receive_queue);
 	tcp_write_queue_purge(sk);
 	tcp_fastopen_active_disable_ofo_check(sk);
@@ -3376,10 +3364,6 @@ void tcp_done(struct sock *sk)
 		reqsk_fastopen_remove(sk, req, false);
 
 	sk->sk_shutdown = SHUTDOWN_MASK;
-
-#ifdef CONFIG_REQSK_PRIORITY_QUEUE
-	tcp_clear_priority_queue(sk);
-#endif
 
 	if (!sock_flag(sk, SOCK_DEAD))
 		sk->sk_state_change(sk);

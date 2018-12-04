@@ -12,9 +12,9 @@
 
 #include <linux/hashtable.h>
 #include <linux/timer.h>
-#include <linux/tcp.h>
+#include <net/inet_connection_sock.h>
 
-#define EXPIRATION_MSECS 800
+#define EXPIRATION_MSECS 10000
 
 /** This structure will hold the entries in the hash table.
  * To deal with collisions, we must always save the key, which
@@ -30,9 +30,9 @@ struct tcp_pr_table_entry {
 	__be32		ip_addr;
 	atomic_t	req_count;
 
-	struct hlist_node	en_link;
-	struct timer_list	en_timer;
-	struct tcp_sock		*sk;
+	struct hlist_node		en_link;
+	struct timer_list		en_timer;
+	struct inet_connection_sock	*sk;
 };
 
 void table_entry_timer_fn(unsigned long data)
@@ -40,6 +40,7 @@ void table_entry_timer_fn(unsigned long data)
 	struct tcp_pr_table_entry *entry = (struct tcp_pr_table_entry *)data;
 
 	/* timer has expired, remove the entry from the data */
+	pr_info("The timer has launched...\n");
 	spin_lock(&entry->sk->pr_state_lock);
 	hash_del_rcu(&entry->en_link);
 	spin_unlock(&entry->sk->pr_state_lock);
@@ -49,7 +50,7 @@ void table_entry_timer_fn(unsigned long data)
 }
 
 static struct tcp_pr_table_entry
-*lookup_pr_table_entry(const struct tcp_sock *sk, __be32 key)
+*lookup_pr_table_entry(const struct inet_connection_sock *sk, __be32 key)
 {
 	struct tcp_pr_table_entry *entry;
 	hash_for_each_possible_rcu(sk->pr_state_cache, entry, en_link, key)
@@ -60,21 +61,23 @@ static struct tcp_pr_table_entry
 
 void tcp_clear_priority_queue(struct sock *sk)
 {
-	struct tcp_sock *tsk = tcp_sk(sk);
+	struct inet_connection_sock *tsk = inet_csk(sk);
 	struct tcp_pr_table_entry *e;
 	struct hlist_node *tmp;
 	int i;
 
+	pr_info("%s: Cleaning up from a tcp socket!\n", __func__);
 	spin_lock(&tsk->pr_state_lock);
 	hash_for_each_safe(tsk->pr_state_cache, i, tmp, e, en_link) {
 		del_timer(&e->en_timer);
+		hash_del_rcu(&e->en_link);
 		kfree(e);
 	}
 	spin_unlock(&tsk->pr_state_lock);
 }
 EXPORT_SYMBOL(tcp_clear_priority_queue);
 
-u32 compute_weight(struct tcp_sock *sk, __be32 ip_addr, u32 diff)
+u32 compute_weight(struct inet_connection_sock *sk, __be32 ip_addr, u32 diff)
 {
 	/* TODO: add the magic in here and make beautiful things happen */
 	struct tcp_pr_table_entry *entry;
@@ -94,19 +97,19 @@ u32 compute_weight(struct tcp_sock *sk, __be32 ip_addr, u32 diff)
 			    (unsigned long )entry);
 		mod_timer(&entry->en_timer, jiffies + msecs_to_jiffies(EXPIRATION_MSECS));
 
-		pr_debug("Creating new entry in the hash table\n");
+		pr_info("Creating new entry in the hash table\n");
 		spin_lock(&sk->pr_state_lock);
 		hash_add_rcu(sk->pr_state_cache, &entry->en_link, ip_addr);
 		spin_unlock(&sk->pr_state_lock);
 	} else {
 		/* this updates the entry and we don't need to do anything else
 		 **/
-		pr_debug("Entry found and now updating the count\n");
+		pr_info("Entry found and now updating the count\n");
 		count = (u32) atomic_inc_return(&entry->req_count);
 		mod_timer(&entry->en_timer, jiffies + msecs_to_jiffies(EXPIRATION_MSECS));
 	}
 
-	pr_info("Computed weight %d for ip address %x\n", diff/count, ip_addr);
+	pr_info("Computed weight %d for ip address %pI4\n", diff/count, &ip_addr);
 	pr_info("  State = < %d > \n", count);
 	return diff / count > 0 ? diff/count : diff;
 }

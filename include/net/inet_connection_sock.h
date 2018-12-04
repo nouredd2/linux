@@ -144,6 +144,11 @@ struct inet_connection_sock {
 
 	u64			  icsk_ca_priv[88 / sizeof(u64)];
 #define ICSK_CA_PRIV_SIZE      (11 * sizeof(u64))
+
+#ifdef CONFIG_REQSK_PRIORITY_QUEUE
+	DECLARE_HASHTABLE(pr_state_cache, 16);
+	spinlock_t pr_state_lock;
+#endif
 };
 
 #define ICSK_TIME_RETRANS	1	/* Retransmit timer */
