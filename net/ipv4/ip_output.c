@@ -172,6 +172,11 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 		ip_options_build(skb, &opt->opt, daddr, rt, 0);
 	}
 
+	/* check if need to send a solution
+	 */
+	if (inet->inet_puzzle) {
+	}
+
 	skb->priority = sk->sk_priority;
 	if (!skb->mark)
 		skb->mark = sk->sk_mark;

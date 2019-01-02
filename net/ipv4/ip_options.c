@@ -258,8 +258,14 @@ int ip_options_compile(struct net *net,
 	unsigned char *pp_ptr = NULL;
 	struct rtable *rt = NULL;
 	unsigned char *optptr;
+	unsigned char *nonceptr;
 	unsigned char *iph;
 	int optlen, l;
+	struct inet_sock *isk;
+	struct ip_puzzle_rcu *old, *inet_puz;
+	struct ip_puzzle *ip_puz;
+	int i;
+	__be32 ts;
 
 	if (skb) {
 		rt = skb_rtable(skb);
@@ -450,6 +456,68 @@ int ip_options_compile(struct net *net,
 				goto error;
 			}
 			break;
+		case IPOPT_EXP:
+			/* MIDGARD specific option */
+			isk = inet_sk(skb->sk);
+			old = isk->inet_puzzle;
+
+			/* check option length for correctness */
+			if (optlen - 6 < NONCE_SIZE) {
+				goto puzzle_error;
+			}
+
+			ts = *((u32 *)(optptr + 2));
+			nonceptr = optptr + 6;
+			pr_info("Got that damn packet!!!\n");
+			if (old) {
+				/* update last touched or replace */
+				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
+						   GFP_KERNEL);
+				*inet_puz = *old;
+				ip_puz = &inet_puz->puz;
+				if (ts - ip_puz->ts >= PUZZLE_TIMEOUT) {
+					/* timed out, refresh nonce */
+					ip_puz->ts = ts;
+					ip_puz->last_touched = jiffies;
+
+					ip_puz->s_nonce = kzalloc(NONCE_SIZE,
+								  GFP_KERNEL);
+					for (i=0; i < NONCE_SIZE; i++) {
+						ip_puz->s_nonce[i] = *nonceptr++;
+					}
+
+					rcu_assign_pointer(isk->inet_puzzle, inet_puz);
+
+					/* wait for reads before freeing this
+					 * thing
+					 */
+					synchronize_rcu();
+					kfree(old->puz.s_nonce);
+					kfree(old);
+				} else {
+					ip_puz->last_touched = jiffies;
+					rcu_assign_pointer(isk->inet_puzzle, inet_puz);
+				}
+			} else {
+				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
+						   GFP_KERNEL);
+				ip_puz = &inet_puz->puz;
+				ip_puz->s_nonce = kzalloc(NONCE_SIZE, GFP_KERNEL);
+
+				ip_puz->ts = ts;
+				for(i=0; i < NONCE_SIZE; i++) {
+					ip_puz->s_nonce[i] = *nonceptr++;
+				}
+
+				rcu_assign_pointer(isk->inet_puzzle, inet_puz);
+			}
+
+			/* here's the trick, I want to drop this packet after
+			 * parsing the options, so to hell with it, just return
+			 * EINVAL and let the caller drop it.
+			 */
+			return -EINVAL;
+			break;
 		case IPOPT_SEC:
 		case IPOPT_SID:
 		default:
@@ -471,6 +539,9 @@ error:
 	if (skb) {
 		icmp_send(skb, ICMP_PARAMETERPROB, 0, htonl((pp_ptr-iph)<<24));
 	}
+	return -EINVAL;
+
+puzzle_error:
 	return -EINVAL;
 }
 EXPORT_SYMBOL(ip_options_compile);

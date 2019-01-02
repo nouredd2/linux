@@ -29,6 +29,9 @@
 #include <net/tcp_states.h>
 #include <net/l3mdev.h>
 
+#define NONCE_SIZE 8
+#define PUZZLE_TIMEOUT 1000
+
 /** struct ip_options - IP Options
  *
  * @faddr - Saved first hop address
@@ -67,6 +70,23 @@ struct ip_options_rcu {
 struct ip_options_data {
 	struct ip_options_rcu	opt;
 	char			data[40];
+};
+
+/** struct ip_puzzle - IP puzzle extracted form an IP option
+ *
+ * @ts - the server timestamp sent in the option.
+ * @last_touched - The last time this struct was touced.
+ * @s_nonce - the server's nonce.
+ */
+struct ip_puzzle {
+	__be32		ts;
+	u64		last_touched;
+	unsigned char	*s_nonce;
+};
+
+struct ip_puzzle_rcu {
+	struct rcu_head rcu;
+	struct ip_puzzle puz;
 };
 
 struct inet_request_sock {
@@ -178,6 +198,7 @@ struct rtable;
  * @mc_index - Multicast device index
  * @mc_list - Group array
  * @cork - info to build ip hdr on each ip frag while socket is corked
+ * @inet_puzzle - the puzzle obtained from a packet if any
  */
 struct inet_sock {
 	/* sk and pinet6 has to be the first two members of inet_sock */
@@ -223,6 +244,7 @@ struct inet_sock {
 	__be32			mc_addr;
 	struct ip_mc_socklist __rcu	*mc_list;
 	struct inet_cork_full	cork;
+	struct ip_puzzle_rcu __rcu *inet_puzzle;
 };
 
 #define IPCORK_OPT	1	/* ip-options has been held in ipcork.opt */
