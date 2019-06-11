@@ -167,15 +167,20 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 		__ip_select_ident(net, iph, 1);
 	}
 
+	/* check if need to send a solution
+	 */
+	if (inet->inet_puzzle) {
+		/* TODO: build the solution here and add it to the
+		 * ip_options_build function
+		 */
+		pr_info("Should send a puzzle solution now\n");
+	}
+
 	if (opt && opt->opt.optlen) {
 		iph->ihl += opt->opt.optlen>>2;
 		ip_options_build(skb, &opt->opt, daddr, rt, 0);
 	}
 
-	/* check if need to send a solution
-	 */
-	if (inet->inet_puzzle) {
-	}
 
 	skb->priority = sk->sk_priority;
 	if (!skb->mark)

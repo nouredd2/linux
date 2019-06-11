@@ -31,6 +31,7 @@
 
 #define NONCE_SIZE 8
 #define PUZZLE_TIMEOUT 1000
+#define DEFAULT_DIFFICULTY 10
 
 /** struct ip_options - IP Options
  *
@@ -76,17 +77,20 @@ struct ip_options_data {
  *
  * @ts - the server timestamp sent in the option.
  * @last_touched - The last time this struct was touced.
- * @s_nonce - the server's nonce.
+ * @curr_puzzle - The current number of the solution to be generated
+ * @difficulty - The difficulty at which the client chooses to solve
+ * @s_nonce - the server's nonce
+ * @c_nonce - the client's nonce
  */
-struct ip_puzzle {
+struct ip_puzzle_rcu {
 	__be32		ts;
 	u64		last_touched;
+	atomic_t	curr_puzzle;
+	int		difficulty;
 	unsigned char	*s_nonce;
-};
+	unsigned char   *c_nonce;
 
-struct ip_puzzle_rcu {
 	struct rcu_head rcu;
-	struct ip_puzzle puz;
 };
 
 struct inet_request_sock {

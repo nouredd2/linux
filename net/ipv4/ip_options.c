@@ -245,6 +245,16 @@ static void spec_dst_fill(__be32 *spec_dst, struct sk_buff *skb)
 		*spec_dst = fib_compute_spec_dst(skb);
 }
 
+static void inet_puzzle_reclaim(struct rcu_head *rp)
+{
+	struct ip_puzzle_rcu *pp = container_of(rp, struct ip_puzzle_rcu, rcu);
+
+	if (pp->s_nonce)
+		kfree(pp->s_nonce);
+
+	kfree(pp);
+}
+
 /*
  * Verify options and fill pointers in struct options.
  * Caller should clear *opt, and set opt->data.
@@ -263,7 +273,6 @@ int ip_options_compile(struct net *net,
 	int optlen, l;
 	struct inet_sock *isk;
 	struct ip_puzzle_rcu *old, *inet_puz;
-	struct ip_puzzle *ip_puz;
 	int i;
 	__be32 ts;
 
@@ -459,7 +468,6 @@ int ip_options_compile(struct net *net,
 		case IPOPT_EXP:
 			/* MIDGARD specific option */
 			isk = inet_sk(skb->sk);
-			old = isk->inet_puzzle;
 
 			/* check option length for correctness */
 			if (optlen - 6 < NONCE_SIZE) {
@@ -469,47 +477,58 @@ int ip_options_compile(struct net *net,
 			ts = *((u32 *)(optptr + 2));
 			nonceptr = optptr + 6;
 			pr_info("Got that damn packet!!!\n");
+
+			old = rcu_dereference(isk->inet_puzzle);
 			if (old) {
+				pr_info("Must now reuse the old puzzle structure\n");
 				/* update last touched or replace */
 				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
 						   GFP_KERNEL);
 				*inet_puz = *old;
-				ip_puz = &inet_puz->puz;
-				if (ts - ip_puz->ts >= PUZZLE_TIMEOUT) {
+				if (ts - inet_puz->ts >= PUZZLE_TIMEOUT) {
+					pr_info("puzzle expired, refresh the nonce\n");
 					/* timed out, refresh nonce */
-					ip_puz->ts = ts;
-					ip_puz->last_touched = jiffies;
+					inet_puz->ts = ts;
+					inet_puz->last_touched = jiffies;
 
-					ip_puz->s_nonce = kzalloc(NONCE_SIZE,
+					inet_puz->s_nonce = kzalloc(NONCE_SIZE,
 								  GFP_KERNEL);
 					for (i=0; i < NONCE_SIZE; i++) {
-						ip_puz->s_nonce[i] = *nonceptr++;
+						inet_puz->s_nonce[i] = *nonceptr++;
 					}
-
-					rcu_assign_pointer(isk->inet_puzzle, inet_puz);
-
-					/* wait for reads before freeing this
-					 * thing
-					 */
-					synchronize_rcu();
-					kfree(old->puz.s_nonce);
-					kfree(old);
 				} else {
-					ip_puz->last_touched = jiffies;
-					rcu_assign_pointer(isk->inet_puzzle, inet_puz);
-				}
-			} else {
-				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
-						   GFP_KERNEL);
-				ip_puz = &inet_puz->puz;
-				ip_puz->s_nonce = kzalloc(NONCE_SIZE, GFP_KERNEL);
-
-				ip_puz->ts = ts;
-				for(i=0; i < NONCE_SIZE; i++) {
-					ip_puz->s_nonce[i] = *nonceptr++;
+					pr_info("update puzzle last touched\n");
+					/* do this so that the reclaim function
+					 * does not free the nonce since we're
+					 * reusing it
+					 */
+					old->s_nonce = 0;
+					inet_puz->last_touched = jiffies;
 				}
 
 				rcu_assign_pointer(isk->inet_puzzle, inet_puz);
+				/* wait for reads before freeing this
+				 * thing
+				 */
+				// synchronize_rcu();
+				call_rcu(&old->rcu, inet_puzzle_reclaim);
+			} else {
+				pr_info("Need to create a new puzzle structure\n");
+				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
+						   GFP_KERNEL);
+				inet_puz->s_nonce = kzalloc(NONCE_SIZE, GFP_KERNEL);
+				inet_puz->c_nonce = kzalloc(NONCE_SIZE, GFP_KERNEL);
+				get_random_bytes(inet_puz->c_nonce, NONCE_SIZE);
+
+				inet_puz->ts = ts;
+				for (i=0; i < NONCE_SIZE; i++) {
+					inet_puz->s_nonce[i] = *nonceptr++;
+				}
+
+				atomic_set(&(inet_puz->curr_puzzle), 0);
+
+				rcu_assign_pointer(isk->inet_puzzle, inet_puz);
+				pr_info("Created an inet puzzle fully allocated!\n");
 			}
 
 			/* here's the trick, I want to drop this packet after

@@ -134,6 +134,7 @@ static DEFINE_SPINLOCK(inetsw_lock);
 void inet_sock_destruct(struct sock *sk)
 {
 	struct inet_sock *inet = inet_sk(sk);
+	struct ip_puzzle_rcu *ip_puz_rcu;
 
 	__skb_queue_purge(&sk->sk_receive_queue);
 	__skb_queue_purge(&sk->sk_error_queue);
@@ -156,6 +157,21 @@ void inet_sock_destruct(struct sock *sk)
 	WARN_ON(sk->sk_forward_alloc);
 
 	kfree(rcu_dereference_protected(inet->inet_opt, 1));
+	/* free the puzzle if any */
+#if 0
+	pr_info("freeing puzzle, should i do that now?\n");
+	ip_puz_rcu = rcu_dereference_protected(inet->inet_puzzle, 1);
+	if (ip_puz_rcu) {
+		pr_info("in freeingm main routine\n");
+		if (ip_puz_rcu->puz) {
+			if (ip_puz_rcu->puz->s_nonce)
+				kfree(ip_puz_rcu->puz->s_nonce);
+			if (ip_puz_rcu->puz->c_nonce)
+				kfree(ip_puz_rcu->puz->c_nonce);
+		}
+		kfree(ip_puz_rcu);
+	}
+#endif
 	dst_release(rcu_dereference_check(sk->sk_dst_cache, 1));
 	dst_release(sk->sk_rx_dst);
 	sk_refcnt_debug_dec(sk);
