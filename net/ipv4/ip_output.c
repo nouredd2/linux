@@ -67,6 +67,7 @@
 #include <net/protocol.h>
 #include <net/route.h>
 #include <net/xfrm.h>
+#include <net/ip_puzzle.h>
 #include <linux/skbuff.h>
 #include <net/sock.h>
 #include <net/arp.h>
@@ -438,10 +439,15 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	struct inet_sock *inet = inet_sk(sk);
 	struct net *net = sock_net(sk);
 	struct ip_options_rcu *inet_opt;
+	struct ip_puzzle_rcu *inet_puzzle;
+	struct inet_solution *inet_solution;
 	struct flowi4 *fl4;
 	struct rtable *rt;
 	struct iphdr *iph;
 	int res;
+	int diff, pnum;
+	u8 *s_nonce, *c_nonce;
+	__be32 ts;
 
 	/* Skip all of this if the packet is already routed,
 	 * f.e. by something like SCTP.
@@ -452,6 +458,32 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	rt = skb_rtable(skb);
 	if (rt)
 		goto packet_routed;
+
+	rcu_read_lock();
+	inet_puzzle = rcu_dereference(inet->inet_puzzle);
+	if (inet_puzzle) {
+		diff = inet_puzzle->difficulty;
+		s_nonce = inet_puzzle->s_nonce;
+		c_nonce = inet_puzzle->c_nonce;
+		ts = inet_puzzle->ts;
+		pnum = atomic_inc_return(&inet_puzzle->curr_puzzle);
+		rcu_read_unlock();
+
+		inet_solution = solve_ip_puzzle(diff, pnum, ts, s_nonce, c_nonce);
+		if (IS_ERR(inet_solution))
+			pr_err("Failed to solve puzzle, will send nevertheless!\n");
+		else {
+			spin_lock_bh(&inet->solution_lock);
+			if (inet->inet_solution)
+				list_add_tail(&(inet_solution->list),
+					      &(inet->inet_solution->list));
+			else
+				inet->inet_solution = inet_solution;
+			spin_unlock_bh(&inet->solution_lock);
+		}
+		pr_info("Solved a puzzle, wohooo\n");
+	} else
+		rcu_read_unlock();
 
 	/* Make sure we can route this packet. */
 	rt = (struct rtable *)__sk_dst_check(sk, 0);

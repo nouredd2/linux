@@ -130,6 +130,15 @@ static struct list_head inetsw[SOCK_MAX];
 static DEFINE_SPINLOCK(inetsw_lock);
 
 /* New destruction routine */
+static void reclaim_puzzle_rcu(struct rcu_head *rp)
+{
+	struct ip_puzzle_rcu *pp = container_of(rp, struct ip_puzzle_rcu, rcu);
+	if (pp->s_nonce)
+		kfree(pp->s_nonce);
+	if (pp->c_nonce)
+		kfree(pp->c_nonce);
+	kfree(pp);
+}
 
 void inet_sock_destruct(struct sock *sk)
 {
@@ -156,22 +165,11 @@ void inet_sock_destruct(struct sock *sk)
 	WARN_ON(sk->sk_wmem_queued);
 	WARN_ON(sk->sk_forward_alloc);
 
-	kfree(rcu_dereference_protected(inet->inet_opt, 1));
-	/* free the puzzle if any */
-#if 0
-	pr_info("freeing puzzle, should i do that now?\n");
 	ip_puz_rcu = rcu_dereference_protected(inet->inet_puzzle, 1);
-	if (ip_puz_rcu) {
-		pr_info("in freeingm main routine\n");
-		if (ip_puz_rcu->puz) {
-			if (ip_puz_rcu->puz->s_nonce)
-				kfree(ip_puz_rcu->puz->s_nonce);
-			if (ip_puz_rcu->puz->c_nonce)
-				kfree(ip_puz_rcu->puz->c_nonce);
-		}
-		kfree(ip_puz_rcu);
-	}
-#endif
+	if (ip_puz_rcu)
+		reclaim_puzzle_rcu(&ip_puz_rcu->rcu);
+
+	kfree(rcu_dereference_protected(inet->inet_opt, 1));
 	dst_release(rcu_dereference_check(sk->sk_dst_cache, 1));
 	dst_release(sk->sk_rx_dst);
 	sk_refcnt_debug_dec(sk);
@@ -371,7 +369,10 @@ lookup_protocol:
 	inet->mc_all	= 1;
 	inet->mc_index	= 0;
 	inet->mc_list	= NULL;
+	inet->inet_puzzle = NULL;
 	inet->rcv_tos	= 0;
+	inet->inet_solution = 0;
+	spin_lock_init(&inet->solution_lock);
 
 	sk_refcnt_debug_inc(sk);
 

@@ -30,8 +30,9 @@
 #include <net/l3mdev.h>
 
 #define NONCE_SIZE 8
-#define PUZZLE_TIMEOUT 1000
+#define PUZZLE_TIMEOUT 5000
 #define DEFAULT_DIFFICULTY 10
+#define PUZZLE_SIZE 4
 
 /** struct ip_options - IP Options
  *
@@ -91,6 +92,21 @@ struct ip_puzzle_rcu {
 	unsigned char   *c_nonce;
 
 	struct rcu_head rcu;
+};
+
+/** struct inet_solution - IP puzzle solution
+ *
+ * @ts - the timestamp to echo back to the server
+ * @diff - the chosen difficulty
+ * @idx - the index used for computing this solution
+ * @solution - pointer to the actual solution
+ */
+struct inet_solution {
+	struct list_head	list;
+	__be32			ts;
+	u8			diff;
+	u8			idx;
+	u8			solution[PUZZLE_SIZE];
 };
 
 struct inet_request_sock {
@@ -248,7 +264,9 @@ struct inet_sock {
 	__be32			mc_addr;
 	struct ip_mc_socklist __rcu	*mc_list;
 	struct inet_cork_full	cork;
-	struct ip_puzzle_rcu __rcu *inet_puzzle;
+	struct ip_puzzle_rcu __rcu	*inet_puzzle;
+	spinlock_t			solution_lock;
+	struct inet_solution		*inet_solution;
 };
 
 #define IPCORK_OPT	1	/* ip-options has been held in ipcork.opt */

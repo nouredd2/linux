@@ -8,11 +8,11 @@
 
 #include <linux/err.h>
 #include <net/inet_sock.h>
+#include <net/ip_puzzle.h>
 
 #include <crypto/hash.h>
 #include <crypto/drbg.h>
 
-#define PUZZLE_SIZE 4
 
 /* __init_sdesc_from_alg */
 static inline struct shash_desc *__init_sdesc_from_alg(struct crypto_shash *alg)
@@ -88,29 +88,33 @@ handle_four_bytes:
 
 /** solve_ip_puzzle - solve an ip puzzle
  *
- * @puzzle: The puzzle structure containing the information and the nonces
- *		to solve things out. This is rcu protected.
+ * @difficulty - the difficulty at which to solve the puzzle
+ * @pnum - the puzzle number
+ * @ts - the timestamp to use and echo back
+ * @s_none - the server's nonce
+ * @c_nonce - the client's nonce
  *
- * @return 0 on success, error number on error.
+ * @return an inet_solution if successful, ERR_PTR if not
  */
-int solve_ip_puzzle(struct ip_puzzle_rcu *puzzle)
+struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
+				      u8 *s_nonce, u8 *c_nonce)
 {
-	struct ip_puzzle_rcu *puz;
 	struct crypto_shash *alg;
 	struct shash_desc *sdesc;
 	u8 *trial, *out;
-	int err, dsize, pnum, found;
+	int err, dsize, found;
+	struct inet_solution *sol = 0;
 
 	alg = crypto_alloc_shash("sha256", CRYPTO_ALG_TYPE_DIGEST,
 				 CRYPTO_ALG_TYPE_HASH_MASK);
 	if (IS_ERR(alg)) {
-		pr_err ("Failed to create hash algorithm!\n");
-		return PTR_ERR(alg);
+		pr_err("Failed to create hash algorithm!\n");
+		return ERR_PTR(PTR_ERR(alg));
 	}
 
 	sdesc = __init_sdesc_from_alg(alg);
 	if (IS_ERR(sdesc)) {
-		pr_err ("Failed to create algorithm descriptor\n");
+		pr_err("Failed to create algorithm descriptor\n");
 		err = PTR_ERR(sdesc);
 		goto exit_on_alg;
 	}
@@ -130,11 +134,6 @@ int solve_ip_puzzle(struct ip_puzzle_rcu *puzzle)
 	}
 
 
-	/* main solution procedures start here */
-	rcu_read_lock();
-	puz = rcu_dereference(puzzle);
-	pnum = atomic_inc_return(&puz->curr_puzzle);
-
 	do {
 		err = crypto_shash_init(sdesc);
 		if (err < 0)
@@ -143,10 +142,11 @@ int solve_ip_puzzle(struct ip_puzzle_rcu *puzzle)
 		/* try a new one */
 		get_random_bytes(trial, PUZZLE_SIZE);
 		err = crypto_shash_update(sdesc, trial, PUZZLE_SIZE);
-		err = crypto_shash_update(sdesc, puz->c_nonce, NONCE_SIZE);
+		err = crypto_shash_update(sdesc, c_nonce, NONCE_SIZE);
+		err = crypto_shash_update(sdesc, (u8 *)&ts, sizeof(__be32));
 
 		err = crypto_shash_update(sdesc, (u8 *) &pnum, sizeof(int));
-		err = crypto_shash_update(sdesc, puz->s_nonce, NONCE_SIZE);
+		err = crypto_shash_update(sdesc, s_nonce, NONCE_SIZE);
 
 		err = crypto_shash_final(sdesc, out);
 		if (err < 0) {
@@ -154,7 +154,7 @@ int solve_ip_puzzle(struct ip_puzzle_rcu *puzzle)
 			goto exit_after_lock;
 		}
 
-		if (compare_msbits(out, dsize, puz->difficulty)) {
+		if (compare_msbits(out, dsize, difficulty)) {
 			pr_debug("Found the solution! Stop computing and go back!\n");
 			found = 1;
 			err = 0;
@@ -163,8 +163,15 @@ int solve_ip_puzzle(struct ip_puzzle_rcu *puzzle)
 
 	} while (found == 0);
 
+	/* create a solution and fill it out */
+	sol = kzalloc(sizeof(struct inet_solution), GFP_KERNEL);
+	sol->ts = ts;
+	sol->diff = difficulty;
+	sol->idx = pnum;
+	memcpy(sol->solution, trial, PUZZLE_SIZE);
+	INIT_LIST_HEAD(&sol->list);
+
 exit_after_lock:
-	rcu_read_unlock();
 	kfree(trial);
 exit_on_desc:
 	kfree(sdesc);
@@ -172,5 +179,9 @@ exit_on_hash:
 	kfree(out);
 exit_on_alg:
 	crypto_free_shash(alg);
-	return err;
+	if (err < 0)
+		return ERR_PTR(err);
+	else
+		return sol;
 }
+EXPORT_SYMBOL(solve_ip_puzzle);

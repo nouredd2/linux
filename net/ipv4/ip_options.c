@@ -44,11 +44,19 @@
 void ip_options_build(struct sk_buff *skb, struct ip_options *opt,
 		      __be32 daddr, struct rtable *rt, int is_frag)
 {
+	struct inet_sock *isk;
 	unsigned char *iph = skb_network_header(skb);
 
 	memcpy(&(IPCB(skb)->opt), opt, sizeof(struct ip_options));
 	memcpy(iph+sizeof(struct iphdr), opt->__data, opt->optlen);
 	opt = &(IPCB(skb)->opt);
+
+	isk = inet_sk(skb->sk);
+	rcu_read_lock();
+	if (rcu_dereference(isk->inet_puzzle)) {
+		pr_info("%s: Will this be enough, I wonder?\n", __FUNCTION__);
+	}
+	rcu_read_unlock();
 
 	if (opt->srr)
 		memcpy(iph+opt->srr+iph[opt->srr+1]-4, &daddr, 4);
@@ -476,11 +484,9 @@ int ip_options_compile(struct net *net,
 
 			ts = *((u32 *)(optptr + 2));
 			nonceptr = optptr + 6;
-			pr_info("Got that damn packet!!!\n");
 
 			old = rcu_dereference(isk->inet_puzzle);
 			if (old) {
-				pr_info("Must now reuse the old puzzle structure\n");
 				/* update last touched or replace */
 				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
 						   GFP_KERNEL);
@@ -510,7 +516,6 @@ int ip_options_compile(struct net *net,
 				/* wait for reads before freeing this
 				 * thing
 				 */
-				// synchronize_rcu();
 				call_rcu(&old->rcu, inet_puzzle_reclaim);
 			} else {
 				pr_info("Need to create a new puzzle structure\n");
