@@ -142,7 +142,7 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 		/* try a new one */
 		get_random_bytes(trial, PUZZLE_SIZE);
 		err = crypto_shash_update(sdesc, trial, PUZZLE_SIZE);
-		err = crypto_shash_update(sdesc, c_nonce, NONCE_SIZE);
+		err = crypto_shash_update(sdesc, c_nonce, CLIENT_NONCE_SIZE);
 		err = crypto_shash_update(sdesc, (u8 *)&ts, sizeof(__be32));
 
 		err = crypto_shash_update(sdesc, (u8 *) &pnum, sizeof(int));

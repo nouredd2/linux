@@ -23,6 +23,7 @@
 #include <linux/icmp.h>
 #include <linux/netdevice.h>
 #include <linux/rtnetlink.h>
+#include <linux/list.h>
 #include <net/sock.h>
 #include <net/ip.h>
 #include <net/icmp.h>
@@ -44,19 +45,55 @@
 void ip_options_build(struct sk_buff *skb, struct ip_options *opt,
 		      __be32 daddr, struct rtable *rt, int is_frag)
 {
-	struct inet_sock *isk;
+	struct inet_sock *isk = inet_sk(skb->sk);
+	struct ip_puzzle_rcu *inet_puzzle;
 	unsigned char *iph = skb_network_header(skb);
+	unsigned char *hdr = iph;
+	unsigned char *c_nonce;
+	struct inet_solution *inet_solution;
+	size_t offset;
+
+	/* check if we should add a solution to the packet here, I am doing this
+	 * here to avoid complicating the option processing pipeline. This will
+	 * add 20 bytes (Which is 4 bytes aligned) to the start of the options,
+	 * so basially I will trick the rest of the option processing part by
+	 * adding 20 to the current iph so that the offsets computed from before
+	 * would not be changed.
+	 */
+	if (isk->solution_list && !list_empty(&isk->inet_solution_list)) {
+		inet_solution = list_first_entry(&isk->inet_solution_list,
+						 struct inet_solution, list);
+
+		hdr = iph + sizeof(struct iphdr);
+
+		*hdr++ = IPOPT_EXP;
+		*hdr++ = 20;
+
+		rcu_read_lock();
+		inet_puzzle = isk->inet_puzzle;
+		c_nonce = inet_puzzle->c_nonce;
+		rcu_read_unlock();
+		memcpy(hdr, c_nonce, CLIENT_NONCE_SIZE);
+		hdr += CLIENT_NONCE_SIZE;
+
+		*((__be32 *)hdr) = inet_solution->ts;
+		hdr += 4;
+		*hdr++ = inet_solution->diff;
+		*hdr++ = inet_solution->idx;
+		memcpy(hdr, inet_solution, PUZZLE_SIZE);
+		hdr += PUZZLE_SIZE;
+
+		list_del(&inet_solution->list);
+		kfree(inet_solution);
+	}
+	offset = isk->solution_list && !list_empty(&isk->inet_solution_list) ? 20 : 0;
 
 	memcpy(&(IPCB(skb)->opt), opt, sizeof(struct ip_options));
-	memcpy(iph+sizeof(struct iphdr), opt->__data, opt->optlen);
+	memcpy(iph+sizeof(struct iphdr)+offset, opt->__data, opt->optlen);
 	opt = &(IPCB(skb)->opt);
 
-	isk = inet_sk(skb->sk);
-	rcu_read_lock();
-	if (rcu_dereference(isk->inet_puzzle)) {
-		pr_info("%s: Will this be enough, I wonder?\n", __FUNCTION__);
-	}
-	rcu_read_unlock();
+	/* scale iph by 20 to account for the 20 bytes that I added before */
+	iph += offset;
 
 	if (opt->srr)
 		memcpy(iph+opt->srr+iph[opt->srr+1]-4, &daddr, 4);
@@ -279,7 +316,7 @@ int ip_options_compile(struct net *net,
 	unsigned char *nonceptr;
 	unsigned char *iph;
 	int optlen, l;
-	struct inet_sock *isk;
+	struct inet_sock *isk = inet_sk(skb->sk);
 	struct ip_puzzle_rcu *old, *inet_puz;
 	int i;
 	__be32 ts;
@@ -474,9 +511,6 @@ int ip_options_compile(struct net *net,
 			}
 			break;
 		case IPOPT_EXP:
-			/* MIDGARD specific option */
-			isk = inet_sk(skb->sk);
-
 			/* check option length for correctness */
 			if (optlen - 6 < NONCE_SIZE) {
 				goto puzzle_error;
@@ -485,7 +519,7 @@ int ip_options_compile(struct net *net,
 			ts = *((u32 *)(optptr + 2));
 			nonceptr = optptr + 6;
 
-			old = rcu_dereference(isk->inet_puzzle);
+			old = rcu_dereference_protected(isk->inet_puzzle, 1);
 			if (old) {
 				/* update last touched or replace */
 				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
@@ -521,9 +555,12 @@ int ip_options_compile(struct net *net,
 				pr_info("Need to create a new puzzle structure\n");
 				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
 						   GFP_KERNEL);
-				inet_puz->s_nonce = kzalloc(NONCE_SIZE, GFP_KERNEL);
-				inet_puz->c_nonce = kzalloc(NONCE_SIZE, GFP_KERNEL);
-				get_random_bytes(inet_puz->c_nonce, NONCE_SIZE);
+				inet_puz->s_nonce = kzalloc(NONCE_SIZE,
+							    GFP_KERNEL);
+				inet_puz->c_nonce = kzalloc(CLIENT_NONCE_SIZE,
+							    GFP_KERNEL);
+				get_random_bytes(inet_puz->c_nonce,
+						 CLIENT_NONCE_SIZE);
 
 				inet_puz->ts = ts;
 				for (i=0; i < NONCE_SIZE; i++) {
@@ -533,6 +570,12 @@ int ip_options_compile(struct net *net,
 				atomic_set(&(inet_puz->curr_puzzle), 0);
 
 				rcu_assign_pointer(isk->inet_puzzle, inet_puz);
+
+				isk->solution_list = kmalloc(sizeof(struct inet_sol_list),
+							     GFP_KERNEL);
+				INIT_LIST_HEAD(&isk->inet_solution_list);
+				spin_lock_init(&isk->solution_lock);
+
 				pr_info("Created an inet puzzle fully allocated!\n");
 			}
 

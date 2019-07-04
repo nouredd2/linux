@@ -169,6 +169,9 @@ void inet_sock_destruct(struct sock *sk)
 	if (ip_puz_rcu)
 		reclaim_puzzle_rcu(&ip_puz_rcu->rcu);
 
+	if (inet->solution_list)
+		kfree(inet->solution_list);
+
 	kfree(rcu_dereference_protected(inet->inet_opt, 1));
 	dst_release(rcu_dereference_check(sk->sk_dst_cache, 1));
 	dst_release(sk->sk_rx_dst);
@@ -370,9 +373,8 @@ lookup_protocol:
 	inet->mc_index	= 0;
 	inet->mc_list	= NULL;
 	inet->inet_puzzle = NULL;
+	inet->solution_list = NULL;
 	inet->rcv_tos	= 0;
-	inet->inet_solution = 0;
-	spin_lock_init(&inet->solution_lock);
 
 	sk_refcnt_debug_inc(sk);
 

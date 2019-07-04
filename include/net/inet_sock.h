@@ -30,6 +30,7 @@
 #include <net/l3mdev.h>
 
 #define NONCE_SIZE 8
+#define CLIENT_NONCE_SIZE 8
 #define PUZZLE_TIMEOUT 5000
 #define DEFAULT_DIFFICULTY 10
 #define PUZZLE_SIZE 4
@@ -107,6 +108,16 @@ struct inet_solution {
 	u8			diff;
 	u8			idx;
 	u8			solution[PUZZLE_SIZE];
+};
+
+/** struct inet_solution_list - Solution list to maintain at the struct
+ *
+ * @list - The head of the list containing the solutions
+ * @solution_lock - The lock to maintain concurrency
+ */
+struct inet_sol_list {
+	struct list_head list;
+	spinlock_t solution_lock;
 };
 
 struct inet_request_sock {
@@ -265,8 +276,9 @@ struct inet_sock {
 	struct ip_mc_socklist __rcu	*mc_list;
 	struct inet_cork_full	cork;
 	struct ip_puzzle_rcu __rcu	*inet_puzzle;
-	spinlock_t			solution_lock;
-	struct inet_solution		*inet_solution;
+	struct inet_sol_list		*solution_list;
+#define inet_solution_list	solution_list->list
+#define solution_lock		solution_list->solution_lock
 };
 
 #define IPCORK_OPT	1	/* ip-options has been held in ipcork.opt */

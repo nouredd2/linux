@@ -61,6 +61,7 @@
 #include <linux/proc_fs.h>
 #include <linux/stat.h>
 #include <linux/init.h>
+#include <linux/list.h>
 
 #include <net/snmp.h>
 #include <net/ip.h>
@@ -166,15 +167,6 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 	} else {
 		iph->frag_off = 0;
 		__ip_select_ident(net, iph, 1);
-	}
-
-	/* check if need to send a solution
-	 */
-	if (inet->inet_puzzle) {
-		/* TODO: build the solution here and add it to the
-		 * ip_options_build function
-		 */
-		pr_info("Should send a puzzle solution now\n");
 	}
 
 	if (opt && opt->opt.optlen) {
@@ -444,6 +436,7 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	struct flowi4 *fl4;
 	struct rtable *rt;
 	struct iphdr *iph;
+	size_t offset;
 	int res;
 	int diff, pnum;
 	u8 *s_nonce, *c_nonce;
@@ -474,11 +467,8 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 			pr_err("Failed to solve puzzle, will send nevertheless!\n");
 		else {
 			spin_lock_bh(&inet->solution_lock);
-			if (inet->inet_solution)
-				list_add_tail(&(inet_solution->list),
-					      &(inet->inet_solution->list));
-			else
-				inet->inet_solution = inet_solution;
+			list_add_tail(&(inet_solution->list),
+				      &(inet->inet_solution_list));
 			spin_unlock_bh(&inet->solution_lock);
 		}
 		pr_info("Solved a puzzle, wohooo\n");
@@ -517,7 +507,9 @@ packet_routed:
 		goto no_route;
 
 	/* OK, we know where to send it, allocate and build IP header. */
-	skb_push(skb, sizeof(struct iphdr) + (inet_opt ? inet_opt->opt.optlen : 0));
+	offset = inet->solution_list && !list_empty(&inet->inet_solution_list) ? 20 : 0;
+	skb_push(skb, sizeof(struct iphdr) +
+		 (inet_opt ? inet_opt->opt.optlen : 0) + offset);
 	skb_reset_network_header(skb);
 	iph = ip_hdr(skb);
 	*((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (inet->tos & 0xff));
@@ -530,9 +522,12 @@ packet_routed:
 	ip_copy_addrs(iph, fl4);
 
 	/* Transport layer set skb->h.foo itself. */
-
+	pr_info("offset = %lx, ihl = %x\n", offset, iph->ihl);
 	if (inet_opt && inet_opt->opt.optlen) {
 		iph->ihl += inet_opt->opt.optlen >> 2;
+		pr_info("Header length before: %x\n", iph->ihl);
+		iph->ihl += offset >> 2;
+		pr_info("Header length after: %x\n", iph->ihl);
 		ip_options_build(skb, &inet_opt->opt, inet->inet_daddr, rt, 0);
 	}
 
