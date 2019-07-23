@@ -129,21 +129,43 @@
 static struct list_head inetsw[SOCK_MAX];
 static DEFINE_SPINLOCK(inetsw_lock);
 
-/* New destruction routine */
-static void reclaim_puzzle_rcu(struct rcu_head *rp)
+void inet_destruct_puzzle(struct inet_sock *inet)
 {
-	struct ip_puzzle_rcu *pp = container_of(rp, struct ip_puzzle_rcu, rcu);
-	if (pp->s_nonce)
-		kfree(pp->s_nonce);
-	if (pp->c_nonce)
-		kfree(pp->c_nonce);
-	kfree(pp);
+	struct inet_solution *it, *tmp;
+
+	spin_lock_bh(&inet->solution_lock);
+	pr_info("Destruct: Deleting all solutions\n");
+	pr_info("Destruct: Is it empty? %d\n", list_empty(&inet->inet_solution_list));
+	pr_info("Destruct: What does (%p) contain? (%p, %p)\n",
+		&inet->inet_solution_list, inet->inet_solution_list.prev, inet->inet_solution_list.next);
+
+	list_for_each_entry_safe(it, tmp, &inet->inet_solution_list, list) {
+		pr_info("Destruct: Freeing a list entry\n");
+		pr_info("Destruct: it = %p, list_head = %p\n",
+			it, &inet->inet_solution_list);
+		list_del(&it->list);
+		if (it->solution)
+			kfree(it->solution);
+		kfree(it);
+	}
+	spin_unlock_bh(&inet->solution_lock);
+
+	spin_lock_bh(&inet->plock);
+	if (inet->inet_puzzle) {
+		pr_info("Destruct: freeing the inet puzzle at: %p\n", inet->inet_puzzle);
+		kfree(inet->inet_puzzle->c_nonce);
+		kfree(inet->inet_puzzle->s_nonce);
+		kfree(inet->inet_puzzle);
+		inet->inet_puzzle = 0;
+		inet->puzzle_seen = 1;
+	}
+	spin_unlock_bh(&inet->plock);
 }
 
+/* New destruction routine */
 void inet_sock_destruct(struct sock *sk)
 {
 	struct inet_sock *inet = inet_sk(sk);
-	struct ip_puzzle_rcu *ip_puz_rcu;
 
 	__skb_queue_purge(&sk->sk_receive_queue);
 	__skb_queue_purge(&sk->sk_error_queue);
@@ -165,13 +187,9 @@ void inet_sock_destruct(struct sock *sk)
 	WARN_ON(sk->sk_wmem_queued);
 	WARN_ON(sk->sk_forward_alloc);
 
-	ip_puz_rcu = rcu_dereference_protected(inet->inet_puzzle, 1);
-	if (ip_puz_rcu)
-		reclaim_puzzle_rcu(&ip_puz_rcu->rcu);
-
-	if (inet->solution_list)
-		kfree(inet->solution_list);
-
+	pr_info("Destruct: protocol is %d\n", sk->sk_protocol);
+	pr_info("Destruct: protocol family is %d\n", sk->sk_family);
+	inet_destruct_puzzle(inet);
 	kfree(rcu_dereference_protected(inet->inet_opt, 1));
 	dst_release(rcu_dereference_check(sk->sk_dst_cache, 1));
 	dst_release(sk->sk_rx_dst);
@@ -373,8 +391,12 @@ lookup_protocol:
 	inet->mc_index	= 0;
 	inet->mc_list	= NULL;
 	inet->inet_puzzle = NULL;
-	inet->solution_list = NULL;
 	inet->rcv_tos	= 0;
+	inet->puzzle_seen = 0;
+
+	spin_lock_init(&inet->plock);
+	spin_lock_init(&inet->solution_lock);
+	INIT_LIST_HEAD(&inet->inet_solution_list);
 
 	sk_refcnt_debug_inc(sk);
 

@@ -224,6 +224,12 @@ lookup_protocol:
 	inet->mc_list	= NULL;
 	inet->rcv_tos	= 0;
 
+	inet->inet_puzzle = NULL;
+	inet->puzzle_seen = 0;
+	spin_lock_init(&inet->plock);
+	spin_lock_init(&inet->solution_lock);
+	INIT_LIST_HEAD(&inet->inet_solution_list);
+
 	if (net->ipv4.sysctl_ip_no_pmtu_disc)
 		inet->pmtudisc = IP_PMTUDISC_DONT;
 	else

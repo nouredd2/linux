@@ -64,7 +64,7 @@ static int compare_msbits(const u8 *buf, int buflen, int bits)
 		if (buflen > 3)
 			goto handle_four_bytes;
 
-		tmp = kzalloc(4, GFP_KERNEL);
+		tmp = kmalloc(4, GFP_KERNEL);
 		memcpy(tmp, buf, buflen);
 
 		cmp.large = *(u32 *)tmp;
@@ -120,19 +120,17 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 	}
 
 	dsize = crypto_shash_digestsize(alg);
-	out = kzalloc(dsize, GFP_KERNEL);
+	out = kmalloc(dsize, GFP_KERNEL);
 	if (IS_ERR(out)) {
 		err = PTR_ERR(out);
 		goto exit_on_desc;
 	}
 
-
-	trial = kzalloc(PUZZLE_SIZE, GFP_KERNEL);
+	trial = kmalloc(PUZZLE_SIZE, GFP_KERNEL);
 	if (IS_ERR(trial)) {
 		err = PTR_ERR(trial);
 		goto exit_on_hash;
 	}
-
 
 	do {
 		err = crypto_shash_init(sdesc);
@@ -145,7 +143,7 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 		err = crypto_shash_update(sdesc, c_nonce, CLIENT_NONCE_SIZE);
 		err = crypto_shash_update(sdesc, (u8 *)&ts, sizeof(__be32));
 
-		err = crypto_shash_update(sdesc, (u8 *) &pnum, sizeof(int));
+		err = crypto_shash_update(sdesc, (u8 *)&pnum, sizeof(int));
 		err = crypto_shash_update(sdesc, s_nonce, NONCE_SIZE);
 
 		err = crypto_shash_final(sdesc, out);
@@ -159,12 +157,13 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 			found = 1;
 			err = 0;
 		} else
-			pr_debug("No luck! Try again!\n");
+			pr_info_ratelimited("No luck! Try again!\n");
 
 	} while (found == 0);
 
 	/* create a solution and fill it out */
-	sol = kzalloc(sizeof(struct inet_solution), GFP_KERNEL);
+	sol = kmalloc(sizeof(struct inet_solution), GFP_KERNEL);
+	sol->solution = kmalloc(PUZZLE_SIZE, GFP_KERNEL);
 	sol->ts = ts;
 	sol->diff = difficulty;
 	sol->idx = pnum;

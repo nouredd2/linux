@@ -1450,6 +1450,16 @@ int udp_init_sock(struct sock *sk)
 {
 	skb_queue_head_init(&udp_sk(sk)->reader_queue);
 	sk->sk_destruct = udp_destruct_sock;
+
+	/* Had to add this here because somewhere a UDP socket was being created
+	 * that did not have the correct initializations
+	 */
+	inet_sk(sk)->inet_puzzle = 0;
+	inet_sk(sk)->puzzle_seen = 0;
+	spin_lock_init(&inet_sk(sk)->plock);
+	spin_lock_init(&inet_sk(sk)->solution_lock);
+	INIT_LIST_HEAD(&inet_sk(sk)->inet_solution_list);
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(udp_init_sock);

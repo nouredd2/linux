@@ -30,6 +30,58 @@
 #include <net/route.h>
 #include <net/cipso_ipv4.h>
 #include <net/ip_fib.h>
+#include <net/inet_common.h>
+
+unsigned char ip_solution_build(struct inet_sock *isk, unsigned char *iph)
+{
+	struct inet_solution *inet_sol;
+	unsigned char *hdr = iph;
+	unsigned char *c_nonce;
+	struct ip_puzzle *inet_puzzle;
+	size_t offset = 0;
+
+	spin_lock_bh(&isk->solution_lock);
+	inet_sol = list_first_entry_or_null(&isk->inet_solution_list,
+						 struct inet_solution, list);
+	if (!inet_sol) {
+		spin_unlock_bh(&isk->solution_lock);
+		return 0;
+	}
+
+	list_del(&inet_sol->list);
+	spin_unlock_bh(&isk->solution_lock);
+
+	pr_info("%s: Starting to write the solution data to packet!\n",
+		__func__);
+	pr_info("inet solution: %p\n", inet_sol);
+	hdr = iph + sizeof(struct iphdr);
+	offset = 20;
+
+	*hdr++ = IPOPT_EXP;
+	*hdr++ = 20;
+
+	/* client nonce never changes so no need to lock it */
+	pr_info("Working with puzzle: %p\n", isk->inet_puzzle);
+	inet_puzzle = isk->inet_puzzle;
+	c_nonce = inet_puzzle->c_nonce;
+	pr_info("cnonce at: %p\n", c_nonce);
+	memcpy(hdr, c_nonce, CLIENT_NONCE_SIZE);
+	hdr += CLIENT_NONCE_SIZE;
+
+	*((__be32 *)hdr) = inet_sol->ts;
+	hdr += 4;
+	*hdr++ = inet_sol->diff;
+	*hdr++ = inet_sol->idx;
+	memcpy(hdr, inet_sol->solution, PUZZLE_SIZE);
+	hdr += PUZZLE_SIZE;
+
+	if (hdr - (iph + sizeof(struct iphdr)) != 20)
+		pr_err("woops wrote something wrong in here!\n");
+
+	kfree(inet_sol->solution);
+	kfree(inet_sol);
+	return offset;
+}
 
 /*
  * Write options to IP header, record destination address to
@@ -46,12 +98,8 @@ void ip_options_build(struct sk_buff *skb, struct ip_options *opt,
 		      __be32 daddr, struct rtable *rt, int is_frag)
 {
 	struct inet_sock *isk = inet_sk(skb->sk);
-	struct ip_puzzle_rcu *inet_puzzle;
 	unsigned char *iph = skb_network_header(skb);
-	unsigned char *hdr = iph;
-	unsigned char *c_nonce;
-	struct inet_solution *inet_solution;
-	size_t offset;
+	size_t offset = 0;
 
 	/* check if we should add a solution to the packet here, I am doing this
 	 * here to avoid complicating the option processing pipeline. This will
@@ -60,33 +108,9 @@ void ip_options_build(struct sk_buff *skb, struct ip_options *opt,
 	 * adding 20 to the current iph so that the offsets computed from before
 	 * would not be changed.
 	 */
-	if (isk->solution_list && !list_empty(&isk->inet_solution_list)) {
-		inet_solution = list_first_entry(&isk->inet_solution_list,
-						 struct inet_solution, list);
-
-		hdr = iph + sizeof(struct iphdr);
-
-		*hdr++ = IPOPT_EXP;
-		*hdr++ = 20;
-
-		rcu_read_lock();
-		inet_puzzle = isk->inet_puzzle;
-		c_nonce = inet_puzzle->c_nonce;
-		rcu_read_unlock();
-		memcpy(hdr, c_nonce, CLIENT_NONCE_SIZE);
-		hdr += CLIENT_NONCE_SIZE;
-
-		*((__be32 *)hdr) = inet_solution->ts;
-		hdr += 4;
-		*hdr++ = inet_solution->diff;
-		*hdr++ = inet_solution->idx;
-		memcpy(hdr, inet_solution, PUZZLE_SIZE);
-		hdr += PUZZLE_SIZE;
-
-		list_del(&inet_solution->list);
-		kfree(inet_solution);
+	if (!list_empty(&isk->inet_solution_list)) {
+		offset = ip_solution_build(isk, iph);
 	}
-	offset = isk->solution_list && !list_empty(&isk->inet_solution_list) ? 20 : 0;
 
 	memcpy(&(IPCB(skb)->opt), opt, sizeof(struct ip_options));
 	memcpy(iph+sizeof(struct iphdr)+offset, opt->__data, opt->optlen);
@@ -290,14 +314,24 @@ static void spec_dst_fill(__be32 *spec_dst, struct sk_buff *skb)
 		*spec_dst = fib_compute_spec_dst(skb);
 }
 
-static void inet_puzzle_reclaim(struct rcu_head *rp)
+static struct ip_puzzle *alloc_inet_puzzle(__be32 ts)
 {
-	struct ip_puzzle_rcu *pp = container_of(rp, struct ip_puzzle_rcu, rcu);
+	struct ip_puzzle *inet_puzzle;
 
-	if (pp->s_nonce)
-		kfree(pp->s_nonce);
+	inet_puzzle = kmalloc(sizeof(struct ip_puzzle),
+			      GFP_ATOMIC);
+	if (IS_ERR(inet_puzzle))
+		return inet_puzzle;
 
-	kfree(pp);
+	inet_puzzle->last_touched = jiffies;
+	inet_puzzle->ts = ts;
+	inet_puzzle->difficulty = DEFAULT_DIFFICULTY;
+
+	inet_puzzle->s_nonce = kmalloc(NONCE_SIZE, GFP_ATOMIC);
+	inet_puzzle->c_nonce = kmalloc(CLIENT_NONCE_SIZE, GFP_ATOMIC);
+	get_random_bytes(inet_puzzle->c_nonce, CLIENT_NONCE_SIZE);
+
+	return inet_puzzle;
 }
 
 /*
@@ -315,10 +349,9 @@ int ip_options_compile(struct net *net,
 	unsigned char *optptr;
 	unsigned char *nonceptr;
 	unsigned char *iph;
-	int optlen, l;
+	int optlen, l, i;
 	struct inet_sock *isk = inet_sk(skb->sk);
-	struct ip_puzzle_rcu *old, *inet_puz;
-	int i;
+	struct ip_puzzle *inet_puz;
 	__be32 ts;
 
 	if (skb) {
@@ -511,73 +544,60 @@ int ip_options_compile(struct net *net,
 			}
 			break;
 		case IPOPT_EXP:
-			/* check option length for correctness */
-			if (optlen - 6 < NONCE_SIZE) {
+			/* ignore these packets if we are in TIME_WAIT or in
+			 * CLOSE_WAIT
+			 */
+			if (isk->sk.sk_state == TCP_TIME_WAIT) {
+				pr_info("Got a packet while in timed wait, ignoring\n");
+				/* inet_destruct_puzzle(isk); */
 				goto puzzle_error;
 			}
 
-			ts = *((u32 *)(optptr + 2));
+			/* check option length for correctness */
+			if (optlen - 6 < NONCE_SIZE) {
+				pr_err("Malformed puzzle packet received\n");
+				goto puzzle_error;
+			}
+
+			ts = *((__be32 *)(optptr + 2));
 			nonceptr = optptr + 6;
 
-			old = rcu_dereference_protected(isk->inet_puzzle, 1);
-			if (old) {
+			pr_info("Trying to acquire lock\n");
+			spin_lock_bh(&isk->plock);
+			if (isk->inet_puzzle) {
 				/* update last touched or replace */
-				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
-						   GFP_KERNEL);
-				*inet_puz = *old;
-				if (ts - inet_puz->ts >= PUZZLE_TIMEOUT) {
+				pr_info("Accessing: %p\n", isk->inet_puzzle);
+				inet_puz = isk->inet_puzzle;
+				inet_puz->last_touched = jiffies;
+				isk->puzzle_seen = 1;
+
+				if ((ntohl(ts) - ntohl(inet_puz->ts)) >= PUZZLE_TIMEOUT) {
 					pr_info("puzzle expired, refresh the nonce\n");
 					/* timed out, refresh nonce */
 					inet_puz->ts = ts;
-					inet_puz->last_touched = jiffies;
-
-					inet_puz->s_nonce = kzalloc(NONCE_SIZE,
-								  GFP_KERNEL);
-					for (i=0; i < NONCE_SIZE; i++) {
+					for (i=0;i<NONCE_SIZE;i++)
 						inet_puz->s_nonce[i] = *nonceptr++;
-					}
-				} else {
-					pr_info("update puzzle last touched\n");
-					/* do this so that the reclaim function
-					 * does not free the nonce since we're
-					 * reusing it
-					 */
-					old->s_nonce = 0;
-					inet_puz->last_touched = jiffies;
+				}
+			} else if (isk->puzzle_seen == 0) { /* This guards for the case where the socket
+							   is in a waiting state after it has been destructed by the kernel */
+				pr_info("Attempting to create a new puzzle structure\n");
+				inet_puz = alloc_inet_puzzle(ts);
+				if (IS_ERR(inet_puz)) {
+					isk->puzzle_seen = 0;
+					spin_unlock_bh(&isk->plock);
+					return -EINVAL;
 				}
 
-				rcu_assign_pointer(isk->inet_puzzle, inet_puz);
-				/* wait for reads before freeing this
-				 * thing
-				 */
-				call_rcu(&old->rcu, inet_puzzle_reclaim);
-			} else {
-				pr_info("Need to create a new puzzle structure\n");
-				inet_puz = kzalloc(sizeof(struct ip_puzzle_rcu),
-						   GFP_KERNEL);
-				inet_puz->s_nonce = kzalloc(NONCE_SIZE,
-							    GFP_KERNEL);
-				inet_puz->c_nonce = kzalloc(CLIENT_NONCE_SIZE,
-							    GFP_KERNEL);
-				get_random_bytes(inet_puz->c_nonce,
-						 CLIENT_NONCE_SIZE);
-
-				inet_puz->ts = ts;
-				for (i=0; i < NONCE_SIZE; i++) {
+				for (i=0;i<NONCE_SIZE;i++)
 					inet_puz->s_nonce[i] = *nonceptr++;
-				}
 
-				atomic_set(&(inet_puz->curr_puzzle), 0);
+				isk->puzzle_seen = 1;
+				isk->inet_puzzle = inet_puz;
+				pr_info("Allocated: %p\n", isk->inet_puzzle);
+			} else
+				pr_info("Puzzle already deleted, ignoring\n");
 
-				rcu_assign_pointer(isk->inet_puzzle, inet_puz);
-
-				isk->solution_list = kmalloc(sizeof(struct inet_sol_list),
-							     GFP_KERNEL);
-				INIT_LIST_HEAD(&isk->inet_solution_list);
-				spin_lock_init(&isk->solution_lock);
-
-				pr_info("Created an inet puzzle fully allocated!\n");
-			}
+			spin_unlock_bh(&isk->plock);
 
 			/* here's the trick, I want to drop this packet after
 			 * parsing the options, so to hell with it, just return

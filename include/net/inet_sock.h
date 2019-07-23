@@ -84,15 +84,13 @@ struct ip_options_data {
  * @s_nonce - the server's nonce
  * @c_nonce - the client's nonce
  */
-struct ip_puzzle_rcu {
+struct ip_puzzle {
 	__be32		ts;
+	u8		difficulty;
 	u64		last_touched;
-	atomic_t	curr_puzzle;
-	int		difficulty;
-	unsigned char	*s_nonce;
-	unsigned char   *c_nonce;
-
-	struct rcu_head rcu;
+	u8		curr_puzzle;
+	u8		*s_nonce;
+	u8		*c_nonce;
 };
 
 /** struct inet_solution - IP puzzle solution
@@ -107,18 +105,9 @@ struct inet_solution {
 	__be32			ts;
 	u8			diff;
 	u8			idx;
-	u8			solution[PUZZLE_SIZE];
+	u8			*solution;
 };
 
-/** struct inet_solution_list - Solution list to maintain at the struct
- *
- * @list - The head of the list containing the solutions
- * @solution_lock - The lock to maintain concurrency
- */
-struct inet_sol_list {
-	struct list_head list;
-	spinlock_t solution_lock;
-};
 
 struct inet_request_sock {
 	struct request_sock	req;
@@ -268,6 +257,7 @@ struct inet_sock {
 						  * and cookie exists so we defer connect
 						  * until first data frame is written
 						  */
+	__u8			puzzle_seen;
 	__u8			rcv_tos;
 	__u8			convert_csum;
 	int			uc_index;
@@ -275,10 +265,11 @@ struct inet_sock {
 	__be32			mc_addr;
 	struct ip_mc_socklist __rcu	*mc_list;
 	struct inet_cork_full	cork;
-	struct ip_puzzle_rcu __rcu	*inet_puzzle;
-	struct inet_sol_list		*solution_list;
-#define inet_solution_list	solution_list->list
-#define solution_lock		solution_list->solution_lock
+
+	spinlock_t			plock;
+	spinlock_t			solution_lock;
+	struct ip_puzzle		*inet_puzzle;
+	struct list_head		inet_solution_list;
 };
 
 #define IPCORK_OPT	1	/* ip-options has been held in ipcork.opt */

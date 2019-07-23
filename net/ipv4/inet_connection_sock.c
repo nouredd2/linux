@@ -789,6 +789,14 @@ struct sock *inet_csk_clone_lock(const struct sock *sk,
 
 		inet_sk(newsk)->mc_list = NULL;
 
+		/* inet puzzle initializations, will not copy as the child
+		 * socket should be handling its own puzzles */
+		inet_sk(newsk)->inet_puzzle = 0;
+		inet_sk(newsk)->puzzle_seen = 0;
+		spin_lock_init(&inet_sk(newsk)->plock);
+		spin_lock_init(&inet_sk(newsk)->solution_lock);
+		INIT_LIST_HEAD(&inet_sk(newsk)->inet_solution_list);
+
 		newsk->sk_mark = inet_rsk(req)->ir_mark;
 		atomic64_set(&newsk->sk_cookie,
 			     atomic64_read(&inet_rsk(req)->ir_cookie));

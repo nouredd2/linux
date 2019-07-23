@@ -431,12 +431,12 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	struct inet_sock *inet = inet_sk(sk);
 	struct net *net = sock_net(sk);
 	struct ip_options_rcu *inet_opt;
-	struct ip_puzzle_rcu *inet_puzzle;
+	struct ip_puzzle *inet_puzzle;
 	struct inet_solution *inet_solution;
 	struct flowi4 *fl4;
 	struct rtable *rt;
 	struct iphdr *iph;
-	size_t offset;
+	unsigned char offset = 0;
 	int res;
 	int diff, pnum;
 	u8 *s_nonce, *c_nonce;
@@ -452,16 +452,23 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	if (rt)
 		goto packet_routed;
 
-	rcu_read_lock();
-	inet_puzzle = rcu_dereference(inet->inet_puzzle);
+	spin_lock_bh(&inet->plock);
+	inet_puzzle = inet->inet_puzzle;
 	if (inet_puzzle) {
+		pr_info("Should start solving the puzzle (%p) now\n",
+			inet->inet_puzzle);
 		diff = inet_puzzle->difficulty;
 		s_nonce = inet_puzzle->s_nonce;
 		c_nonce = inet_puzzle->c_nonce;
 		ts = inet_puzzle->ts;
-		pnum = atomic_inc_return(&inet_puzzle->curr_puzzle);
-		rcu_read_unlock();
+		pnum = inet_puzzle->curr_puzzle++;
 
+		pr_info("Puzzle info: diff = %d, ts = %x, pnum = %d, c_nonce = %p, s_nonce = %p\n",
+			diff, ts, pnum, c_nonce, s_nonce);
+
+		pr_info("Trying to solve the puzzle now\n");
+		spin_unlock_bh(&inet->plock);
+#if 0
 		inet_solution = solve_ip_puzzle(diff, pnum, ts, s_nonce, c_nonce);
 		if (IS_ERR(inet_solution))
 			pr_err("Failed to solve puzzle, will send nevertheless!\n");
@@ -472,8 +479,9 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 			spin_unlock_bh(&inet->solution_lock);
 		}
 		pr_info("Solved a puzzle, wohooo\n");
+#endif
 	} else
-		rcu_read_unlock();
+		spin_unlock_bh(&inet->plock);
 
 	/* Make sure we can route this packet. */
 	rt = (struct rtable *)__sk_dst_check(sk, 0);
@@ -507,7 +515,26 @@ packet_routed:
 		goto no_route;
 
 	/* OK, we know where to send it, allocate and build IP header. */
-	offset = inet->solution_list && !list_empty(&inet->inet_solution_list) ? 20 : 0;
+	offset = !list_empty(&inet->inet_solution_list) ? 20 : 0;
+	if (offset > 0) {
+		pr_info("offset = %d\n", offset);
+		offset = 0;
+	}
+#if 0
+	if (offset > 0) {
+		pr_info("Offset = %d\n", offset);
+		pr_info("skb->data = %p, skb->head = %p, skb->data - len = %p",
+			skb->data, skb->head, skb->data - (sizeof(struct iphdr) + offset));
+		pr_info("skb->data - len < skb->head? %d\n",
+			(skb->data - (sizeof(struct iphdr) + offset)) < skb->head);
+		skb_push(skb, sizeof(struct iphdr) + offset);
+		if (!skb)
+			pr_err("Wow something went really wrong!\n");
+		skb_pull(skb, sizeof(struct iphdr) + offset);
+		pr_info("Push and then pull to the skb worked on its, what happened then?\n");
+		offset = 0;
+	}
+#endif
 	skb_push(skb, sizeof(struct iphdr) +
 		 (inet_opt ? inet_opt->opt.optlen : 0) + offset);
 	skb_reset_network_header(skb);
@@ -521,15 +548,20 @@ packet_routed:
 	iph->protocol = sk->sk_protocol;
 	ip_copy_addrs(iph, fl4);
 
-	/* Transport layer set skb->h.foo itself. */
-	pr_info("offset = %lx, ihl = %x\n", offset, iph->ihl);
+#if 0
 	if (inet_opt && inet_opt->opt.optlen) {
 		iph->ihl += inet_opt->opt.optlen >> 2;
 		pr_info("Header length before: %x\n", iph->ihl);
 		iph->ihl += offset >> 2;
 		pr_info("Header length after: %x\n", iph->ihl);
 		ip_options_build(skb, &inet_opt->opt, inet->inet_daddr, rt, 0);
+	} else if (offset > 0) {
+		pr_info("Header length before: %x\n", iph->ihl);
+		iph->ihl += offset >> 2;
+		pr_info("Header length after: %x\n", iph->ihl);
+		ip_solution_build(inet, (unsigned char *)iph);
 	}
+#endif
 
 	ip_select_ident_segs(net, skb, sk,
 			     skb_shinfo(skb)->gso_segs ?: 1);
