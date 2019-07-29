@@ -89,8 +89,8 @@ struct ip_puzzle {
 	u8		difficulty;
 	u64		last_touched;
 	u8		curr_puzzle;
-	u8		*s_nonce;
-	u8		*c_nonce;
+	u8		s_nonce[NONCE_SIZE];
+	u8		c_nonce[CLIENT_NONCE_SIZE];
 };
 
 /** struct inet_solution - IP puzzle solution

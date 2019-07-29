@@ -134,15 +134,7 @@ void inet_destruct_puzzle(struct inet_sock *inet)
 	struct inet_solution *it, *tmp;
 
 	spin_lock_bh(&inet->solution_lock);
-	pr_info("Destruct: Deleting all solutions\n");
-	pr_info("Destruct: Is it empty? %d\n", list_empty(&inet->inet_solution_list));
-	pr_info("Destruct: What does (%p) contain? (%p, %p)\n",
-		&inet->inet_solution_list, inet->inet_solution_list.prev, inet->inet_solution_list.next);
-
 	list_for_each_entry_safe(it, tmp, &inet->inet_solution_list, list) {
-		pr_info("Destruct: Freeing a list entry\n");
-		pr_info("Destruct: it = %p, list_head = %p\n",
-			it, &inet->inet_solution_list);
 		list_del(&it->list);
 		if (it->solution)
 			kfree(it->solution);
@@ -152,10 +144,8 @@ void inet_destruct_puzzle(struct inet_sock *inet)
 
 	spin_lock_bh(&inet->plock);
 	if (inet->inet_puzzle) {
-		pr_info("Destruct: freeing the inet puzzle at: %p\n", inet->inet_puzzle);
-		kfree(inet->inet_puzzle->c_nonce);
-		kfree(inet->inet_puzzle->s_nonce);
-		kfree(inet->inet_puzzle);
+		sock_kfree_s(&inet->sk, inet->inet_puzzle,
+			     sizeof(struct ip_puzzle));
 		inet->inet_puzzle = 0;
 		inet->puzzle_seen = 1;
 	}
@@ -187,8 +177,6 @@ void inet_sock_destruct(struct sock *sk)
 	WARN_ON(sk->sk_wmem_queued);
 	WARN_ON(sk->sk_forward_alloc);
 
-	pr_info("Destruct: protocol is %d\n", sk->sk_protocol);
-	pr_info("Destruct: protocol family is %d\n", sk->sk_family);
 	inet_destruct_puzzle(inet);
 	kfree(rcu_dereference_protected(inet->inet_opt, 1));
 	dst_release(rcu_dereference_check(sk->sk_dst_cache, 1));

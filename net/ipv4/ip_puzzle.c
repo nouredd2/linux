@@ -156,9 +156,7 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 			pr_debug("Found the solution! Stop computing and go back!\n");
 			found = 1;
 			err = 0;
-		} else
-			pr_info_ratelimited("No luck! Try again!\n");
-
+		} 
 	} while (found == 0);
 
 	/* create a solution and fill it out */
