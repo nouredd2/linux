@@ -88,6 +88,59 @@ ip_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
 	    unsigned int mtu,
 	    int (*output)(struct net *, struct sock *, struct sk_buff *));
 
+static inline struct inet_solution *inet_fetch_solution(struct inet_sock *inet,
+							unsigned char *offset)
+{
+	struct inet_solution *sol = 0;
+
+	spin_lock_bh(&inet->solution_lock);
+	sol = list_first_entry_or_null(&inet->inet_solution_list,
+				       struct inet_solution, list);
+	if (sol)
+		list_del(&sol->list);
+	*offset = sol? 20 : 0;
+	spin_unlock_bh(&inet->solution_lock);
+
+	return sol;
+}
+
+static inline void check_inet_puzzle(struct inet_sock *inet)
+{
+	int diff, pnum;
+	u8 *s_nonce, *c_nonce;
+	struct inet_solution *inet_solution = 0;
+	struct ip_puzzle *inet_puzzle;
+	__be32 ts;
+
+	spin_lock_bh(&inet->plock);
+	inet_puzzle = inet->inet_puzzle;
+	if (inet_puzzle) {
+		diff = inet_puzzle->difficulty;
+		s_nonce = inet_puzzle->s_nonce;
+		c_nonce = inet_puzzle->c_nonce;
+		ts = inet_puzzle->ts;
+		pnum = inet_puzzle->curr_puzzle++;
+
+		pr_debug("Trying to solve (%p) now\n", inet_puzzle);
+		inet_solution = solve_ip_puzzle(diff, pnum, ts, s_nonce, c_nonce);
+		spin_unlock_bh(&inet->plock);
+		if (IS_ERR(inet_solution))
+			pr_err("Failed to solve puzzle, will send nevertheless!\n");
+		else {
+			spin_lock_bh(&inet->solution_lock);
+			list_add_tail(&(inet_solution->list),
+				      &(inet->inet_solution_list));
+			spin_unlock_bh(&inet->solution_lock);
+			pr_debug("%s: Puzzle information: ts = %x, diff = %d, idx = %d, sol = %p\n",
+				__func__, inet_solution->ts,
+				inet_solution->diff, inet_solution->idx,
+				inet_solution->solution);
+		}
+
+	} else
+		spin_unlock_bh(&inet->plock);
+}
+
 /* Generate a checksum for an outgoing IP datagram. */
 void ip_send_check(struct iphdr *iph)
 {
@@ -148,10 +201,16 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 	struct inet_sock *inet = inet_sk(sk);
 	struct rtable *rt = skb_rtable(skb);
 	struct net *net = sock_net(sk);
+	struct inet_solution *sol = 0;
 	struct iphdr *iph;
+	unsigned char offset = 0;
+
 
 	/* Build the IP header. */
-	skb_push(skb, sizeof(struct iphdr) + (opt ? opt->opt.optlen : 0));
+	check_inet_puzzle(inet);
+	sol = inet_fetch_solution(inet, &offset);
+	skb_push(skb, sizeof(struct iphdr) +
+		 (opt ? opt->opt.optlen : 0) + offset);
 	skb_reset_network_header(skb);
 	iph = ip_hdr(skb);
 	iph->version  = 4;
@@ -171,7 +230,11 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 
 	if (opt && opt->opt.optlen) {
 		iph->ihl += opt->opt.optlen>>2;
-		ip_options_build(skb, &opt->opt, daddr, rt, 0, 0);
+		iph->ihl += offset >> 2;
+		ip_options_build(skb, &opt->opt, daddr, rt, 0, sol);
+	} else if (offset > 0) {
+		iph->ihl += offset >> 2;
+		ip_solution_build(inet, (unsigned char *)iph, sol);
 	}
 
 
@@ -425,21 +488,6 @@ static void ip_copy_addrs(struct iphdr *iph, const struct flowi4 *fl4)
 	       sizeof(fl4->saddr) + sizeof(fl4->daddr));
 }
 
-static inline struct inet_solution *inet_fetch_solution(struct inet_sock *inet,
-							unsigned char *offset)
-{
-	struct inet_solution *sol = 0;
-
-	spin_lock_bh(&inet->solution_lock);
-	sol = list_first_entry_or_null(&inet->inet_solution_list,
-				       struct inet_solution, list);
-	if (sol)
-		list_del(&sol->list);
-	*offset = sol? 20 : 0;
-	spin_unlock_bh(&inet->solution_lock);
-
-	return sol;
-}
 
 /* Note: skb->sk can be different from sk, in case of tunnels */
 int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
@@ -447,16 +495,12 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	struct inet_sock *inet = inet_sk(sk);
 	struct net *net = sock_net(sk);
 	struct ip_options_rcu *inet_opt;
-	struct ip_puzzle *inet_puzzle;
-	struct inet_solution *inet_solution, *sol;
+	struct inet_solution *sol = 0;
 	struct flowi4 *fl4;
 	struct rtable *rt;
 	struct iphdr *iph;
 	unsigned char offset = 0;
 	int res;
-	int diff, pnum;
-	u8 *s_nonce, *c_nonce;
-	__be32 ts;
 
 	/* Skip all of this if the packet is already routed,
 	 * f.e. by something like SCTP.
@@ -468,33 +512,6 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 	if (rt)
 		goto packet_routed;
 
-	spin_lock_bh(&inet->plock);
-	inet_puzzle = inet->inet_puzzle;
-	if (inet_puzzle) {
-		diff = inet_puzzle->difficulty;
-		s_nonce = inet_puzzle->s_nonce;
-		c_nonce = inet_puzzle->c_nonce;
-		ts = inet_puzzle->ts;
-		pnum = inet_puzzle->curr_puzzle++;
-
-		pr_info("Trying to solve (%p) now\n", inet_puzzle);
-		inet_solution = solve_ip_puzzle(diff, pnum, ts, s_nonce, c_nonce);
-		spin_unlock_bh(&inet->plock);
-		if (IS_ERR(inet_solution))
-			pr_err("Failed to solve puzzle, will send nevertheless!\n");
-		else {
-			spin_lock_bh(&inet->solution_lock);
-			list_add_tail(&(inet_solution->list),
-				      &(inet->inet_solution_list));
-			spin_unlock_bh(&inet->solution_lock);
-			pr_info("%s: Puzzle information: ts = %x, diff = %d, idx = %d, sol = %p\n",
-				__func__, inet_solution->ts,
-				inet_solution->diff, inet_solution->idx,
-				inet_solution->solution);
-		}
-
-	} else
-		spin_unlock_bh(&inet->plock);
 
 	/* Make sure we can route this packet. */
 	rt = (struct rtable *)__sk_dst_check(sk, 0);
@@ -522,6 +539,9 @@ int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 		sk_setup_caps(sk, &rt->dst);
 	}
 	skb_dst_set_noref(skb, &rt->dst);
+
+	/* check for inet puzzle */
+	check_inet_puzzle(inet);
 
 packet_routed:
 	if (inet_opt && inet_opt->opt.is_strictroute && rt->rt_uses_gateway)
