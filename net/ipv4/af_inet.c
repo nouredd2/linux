@@ -381,6 +381,7 @@ lookup_protocol:
 	inet->inet_puzzle = NULL;
 	inet->rcv_tos	= 0;
 	inet->puzzle_seen = 0;
+	inet->cork.base.sol = 0;
 
 	spin_lock_init(&inet->plock);
 	spin_lock_init(&inet->solution_lock);
@@ -1831,6 +1832,7 @@ static __net_init int inet_init_net(struct net *net)
 	 */
 	net->ipv4.sysctl_ip_default_ttl = IPDEFTTL;
 	net->ipv4.sysctl_ip_dynaddr = 0;
+	net->ipv4.sysctl_ip_puzzle_difficulty = 10;
 	net->ipv4.sysctl_ip_early_demux = 1;
 	net->ipv4.sysctl_udp_early_demux = 1;
 	net->ipv4.sysctl_tcp_early_demux = 1;

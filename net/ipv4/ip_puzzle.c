@@ -96,7 +96,7 @@ handle_four_bytes:
  *
  * @return an inet_solution if successful, ERR_PTR if not
  */
-struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
+struct inet_solution *solve_ip_puzzle(int difficulty, u8 pnum, __be32 ts,
 				      u8 *s_nonce, u8 *c_nonce)
 {
 	struct crypto_shash *alg;
@@ -132,6 +132,7 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 		goto exit_on_hash;
 	}
 
+	found = 0;
 	do {
 		err = crypto_shash_init(sdesc);
 		if (err < 0)
@@ -143,7 +144,7 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 		err = crypto_shash_update(sdesc, c_nonce, CLIENT_NONCE_SIZE);
 		err = crypto_shash_update(sdesc, (u8 *)&ts, sizeof(__be32));
 
-		err = crypto_shash_update(sdesc, (u8 *)&pnum, sizeof(int));
+		err = crypto_shash_update(sdesc, (u8 *)&pnum, sizeof(u8));
 		err = crypto_shash_update(sdesc, s_nonce, NONCE_SIZE);
 
 		err = crypto_shash_final(sdesc, out);
@@ -153,10 +154,9 @@ struct inet_solution *solve_ip_puzzle(int difficulty, int pnum, __be32 ts,
 		}
 
 		if (compare_msbits(out, dsize, difficulty)) {
-			pr_debug("Found the solution! Stop computing and go back!\n");
 			found = 1;
 			err = 0;
-		} 
+		}
 	} while (found == 0);
 
 	/* create a solution and fill it out */

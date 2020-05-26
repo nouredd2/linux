@@ -31,7 +31,7 @@
 
 #define NONCE_SIZE 8
 #define CLIENT_NONCE_SIZE 8
-#define PUZZLE_TIMEOUT 5000
+#define PUZZLE_TIMEOUT 500000
 #define DEFAULT_DIFFICULTY 10
 #define PUZZLE_SIZE 4
 
@@ -180,6 +180,7 @@ struct inet_cork {
 	unsigned int		flags;
 	__be32			addr;
 	struct ip_options	*opt;
+	struct inet_solution	*sol;
 	unsigned int		fragsize;
 	int			length; /* Total length of all frames */
 	struct dst_entry	*dst;

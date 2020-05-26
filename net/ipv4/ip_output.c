@@ -131,10 +131,6 @@ static inline void check_inet_puzzle(struct inet_sock *inet)
 			list_add_tail(&(inet_solution->list),
 				      &(inet->inet_solution_list));
 			spin_unlock_bh(&inet->solution_lock);
-			pr_debug("%s: Puzzle information: ts = %x, diff = %d, idx = %d, sol = %p\n",
-				__func__, inet_solution->ts,
-				inet_solution->diff, inet_solution->idx,
-				inet_solution->solution);
 		}
 
 	} else
@@ -947,6 +943,7 @@ static int __ip_append_data(struct sock *sk,
 	struct sk_buff *skb;
 
 	struct ip_options *opt = cork->opt;
+	struct inet_solution *sol = cork->sol;
 	int hh_len;
 	int exthdrlen;
 	int mtu;
@@ -972,7 +969,8 @@ static int __ip_append_data(struct sock *sk,
 
 	hh_len = LL_RESERVED_SPACE(rt->dst.dev);
 
-	fragheaderlen = sizeof(struct iphdr) + (opt ? opt->optlen : 0);
+	fragheaderlen = sizeof(struct iphdr) + (opt ? opt->optlen : 0) +
+		(sol ? 20 : 0);
 	maxfraglen = ((mtu - fragheaderlen) & ~7) + fragheaderlen;
 	maxnonfragsize = ip_sk_ignore_df(sk) ? 0xFFFF : mtu;
 
@@ -1197,6 +1195,8 @@ static int ip_setup_cork(struct sock *sk, struct inet_cork *cork,
 {
 	struct ip_options_rcu *opt;
 	struct rtable *rt;
+	struct inet_sock *inet = inet_sk(sk);
+	unsigned char offset = 0;
 
 	rt = *rtp;
 	if (unlikely(!rt))
@@ -1217,6 +1217,12 @@ static int ip_setup_cork(struct sock *sk, struct inet_cork *cork,
 		cork->flags |= IPCORK_OPT;
 		cork->addr = ipc->addr;
 	}
+
+	/*
+	 * setup for the ip solution if needed
+	 */
+	check_inet_puzzle(inet);
+	cork->sol = inet_fetch_solution(inet, &offset);
 
 	/*
 	 * We steal reference to this route, caller should not release it
@@ -1409,6 +1415,7 @@ static void ip_cork_release(struct inet_cork *cork)
 	cork->flags &= ~IPCORK_OPT;
 	kfree(cork->opt);
 	cork->opt = NULL;
+	cork->sol = NULL;
 	dst_release(cork->dst);
 	cork->dst = NULL;
 }
@@ -1427,6 +1434,7 @@ struct sk_buff *__ip_make_skb(struct sock *sk,
 	struct inet_sock *inet = inet_sk(sk);
 	struct net *net = sock_net(sk);
 	struct ip_options *opt = NULL;
+	struct inet_solution *sol = cork->sol;
 	struct rtable *rt = (struct rtable *)cork->dst;
 	struct iphdr *iph;
 	__be16 df = 0;
@@ -1476,6 +1484,7 @@ struct sk_buff *__ip_make_skb(struct sock *sk,
 	else
 		ttl = ip_select_ttl(inet, &rt->dst);
 
+	/* check if need a solution here */
 	iph = ip_hdr(skb);
 	iph->version = 4;
 	iph->ihl = 5;
@@ -1488,7 +1497,11 @@ struct sk_buff *__ip_make_skb(struct sock *sk,
 
 	if (opt) {
 		iph->ihl += opt->optlen>>2;
-		ip_options_build(skb, opt, cork->addr, rt, 0, 0);
+		iph->ihl += sol ? (20 >> 2) : 0;
+		ip_options_build(skb, opt, cork->addr, rt, 0, sol);
+	} else if (sol) {
+		iph->ihl += (20 >> 2);
+		ip_solution_build(inet, (unsigned char *)iph, sol);
 	}
 
 	skb->priority = (cork->tos != -1) ? cork->priority: sk->sk_priority;

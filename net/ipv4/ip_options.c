@@ -39,12 +39,13 @@ unsigned char ip_solution_build(struct inet_sock *isk, unsigned char *iph,
 	unsigned char *c_nonce;
 	struct ip_puzzle *inet_puzzle;
 	size_t offset = 0;
+	struct iphdr *iphdr = (struct iphdr *)iph;
 
 	if (!inet_sol)
 		return 0;
 
-	pr_info("%s: Starting to write the solution (%p) with (%p) to packet!\n",
-		__func__, inet_sol, inet_sol->solution);
+	/* set the ecn bits */
+	iphdr->tos = iphdr->tos | 0x03;
 	hdr = iph + sizeof(struct iphdr);
 	offset = 20;
 
@@ -55,10 +56,10 @@ unsigned char ip_solution_build(struct inet_sock *isk, unsigned char *iph,
 		__func__, inet_sol->ts, inet_sol->diff, inet_sol->idx,
 		inet_sol->solution);
 
+
 	/* client nonce never changes so no need to lock it */
 	inet_puzzle = isk->inet_puzzle;
 	c_nonce = inet_puzzle->c_nonce;
-	pr_info("%s: Copying (%p) to the packet\n", __func__, inet_puzzle->c_nonce);
 	memcpy(hdr, c_nonce, CLIENT_NONCE_SIZE);
 	hdr += CLIENT_NONCE_SIZE;
 
@@ -310,6 +311,7 @@ static void spec_dst_fill(__be32 *spec_dst, struct sk_buff *skb)
 static struct ip_puzzle *alloc_inet_puzzle(struct sock *sk, __be32 ts)
 {
 	struct ip_puzzle *inet_puzzle;
+	struct net *net = sock_net(sk);
 
 	inet_puzzle = sock_kmalloc(sk, sizeof(struct ip_puzzle),
 			      GFP_ATOMIC);
@@ -318,7 +320,8 @@ static struct ip_puzzle *alloc_inet_puzzle(struct sock *sk, __be32 ts)
 
 	inet_puzzle->last_touched = jiffies;
 	inet_puzzle->ts = ts;
-	inet_puzzle->difficulty = DEFAULT_DIFFICULTY;
+	inet_puzzle->difficulty = net->ipv4.sysctl_ip_puzzle_difficulty;
+	inet_puzzle->curr_puzzle = 0;
 
 	get_random_bytes(inet_puzzle->c_nonce, CLIENT_NONCE_SIZE);
 
@@ -538,13 +541,11 @@ int ip_options_compile(struct net *net,
 			/* ignore these packets if we are in TIME_WAIT or in
 			 * CLOSE_WAIT
 			 */
-			pr_info("skb->sk is: %p\n", skb->sk);
-			if (skb->sk->sk_state == TCP_TIME_WAIT) {
+			if (!skb->sk || skb->sk->sk_state == TCP_TIME_WAIT) {
 				pr_info("Got a packet while in timed wait, ignoring\n");
 				/* inet_destruct_puzzle(isk); */
 				goto puzzle_error;
 			}
-			pr_info("opt->optlen = %d\n", opt->optlen);
 
 			/* check option length for correctness */
 			if (optlen - 6 < NONCE_SIZE) {
@@ -555,14 +556,9 @@ int ip_options_compile(struct net *net,
 			ts = *((__be32 *)(optptr + 2));
 			nonceptr = optptr + 6;
 
-			pr_info("Trying to acquire lock (%p)\n", &isk->plock);
-			pr_info("Puzzle details: optlen = %d\n", optlen);
-			pr_info("ts = %x\n", ts);
-
 			spin_lock_bh(&isk->plock);
 			if (isk->inet_puzzle) {
 				/* update last touched or replace */
-				pr_info("Accessing: %p\n", isk->inet_puzzle);
 				inet_puz = isk->inet_puzzle;
 				inet_puz->last_touched = jiffies;
 				isk->puzzle_seen = 1;
@@ -571,6 +567,7 @@ int ip_options_compile(struct net *net,
 					pr_info("puzzle expired, refresh the nonce\n");
 					/* timed out, refresh nonce */
 					inet_puz->ts = ts;
+					/* inet_puz->curr_puzzle = 0; */
 					for (i=0;i<NONCE_SIZE;i++)
 						inet_puz->s_nonce[i] = *nonceptr++;
 				}
@@ -588,7 +585,6 @@ int ip_options_compile(struct net *net,
 
 				isk->puzzle_seen = 1;
 				isk->inet_puzzle = inet_puz;
-				pr_info("Allocated: %p\n", isk->inet_puzzle);
 			} else
 				pr_info("Puzzle already deleted, ignoring\n");
 			spin_unlock_bh(&isk->plock);
